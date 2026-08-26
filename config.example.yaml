@@ -13,13 +13,19 @@ storage:
   driver: "sqlite"
   path: "./data/ulsync.db"
 
-# JWT verification for /v1/* (wired in step 03).
+# JWT verification for /v1/*. The server never issues tokens.
 auth:
   jwks_url: "https://<project>.supabase.co/auth/v1/.well-known/jwks.json"
+  # When non-empty, keys are read from this file and jwks_url is not fetched.
+  jwks_file: ""
   jwks_cache_ttl: "10m"
   allowed_algs: ["ES256", "RS256"]
+  # Empty list: do not check the aud claim.
   audience: []
+  # Empty string: do not check the iss claim.
   issuer: ""
+  # Development-only HMAC secret. Must stay empty in production.
+  # HS256 is not in allowed_algs by default; list it explicitly to enable.
   dev_hs256_secret: ""
 
 # Sync behaviour limits (handlers arrive in steps 04–06).

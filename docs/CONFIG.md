@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 14:40:04 +0500  
-**Version:** 2  
+**Updated:** 2026-08-26 16:57:07 +0500  
+**Version:** 3  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -36,12 +36,27 @@ When copying or moving the database, copy all three files together while the ser
 
 | Field | Type | Default | Purpose |
 |---|---|---|---|
-| `jwks_url` | string | Supabase JWKS URL placeholder | URL to fetch JSON Web Key Set for JWT verification. |
-| `jwks_cache_ttl` | duration | `10m` | How long fetched JWKS keys stay cached. |
-| `allowed_algs` | string list | `ES256`, `RS256` | Accepted JWT signing algorithms. |
-| `audience` | string list | empty | Optional JWT `aud` claim values to require. |
-| `issuer` | string | empty | Optional JWT `iss` claim value to require. |
-| `dev_hs256_secret` | string | empty | Development-only shared secret for HS256 (step 03). |
+| `jwks_url` | string | Supabase JWKS URL placeholder | URL of the JSON Web Key Set used to verify bearer tokens. |
+| `jwks_file` | string | empty | Path to a static JWKS file. When non-empty, the server reads this file and does not fetch `jwks_url`. |
+| `jwks_cache_ttl` | duration | `10m` | How long a successfully loaded key set stays cached before the next refresh. |
+| `allowed_algs` | string list | `ES256`, `RS256` | Algorithms the parser will accept. Anything else, including `none` and `HS256`, is rejected unless listed here. |
+| `audience` | string list | empty | JWT `aud` values to require. An empty list means audience is not checked. |
+| `issuer` | string | empty | JWT `iss` value to require. Empty means issuer is not checked. |
+| `dev_hs256_secret` | string | empty | Development-only HMAC secret. Empty in every non-dev deployment. |
+
+The server never issues tokens. It fetches **public** keys (or reads them from `jwks_file`) and extracts `sub` as `user_id`.
+
+Supabase's edge caches the JWKS response for 10 minutes. A newly published signing key may therefore be invisible to this process for up to that long even if `jwks_cache_ttl` is shorter; values under 10 minutes do not make a new Supabase key appear sooner. See [JSON Web Tokens](https://supabase.com/docs/guides/auth/jwts) and [signing keys](https://supabase.com/docs/guides/auth/signing-keys).
+
+An empty `audience` list means "do not check `aud`". The same for an empty `issuer`: `iss` is not required. Non-empty values are matched with `jwt.WithAudience` / `jwt.WithIssuer` and a mismatch is a hard rejection.
+
+### Symmetric development mode
+
+`dev_hs256_secret` exists because a local loop without an identity provider is useful. It is not a production setting, and the name is deliberate so it cannot be mistaken for "the JWT secret".
+
+HS256 is a symmetric algorithm: the key that verifies a token is the same key that can **issue** one. A process that holds this secret can mint a bearer token for any `sub`, including users of someone else's project. Supabase calls HS256 "not recommended for production" and "strongly discourage[s]" verifying tokens with the legacy JWT secret; new projects sign asymmetrically by default as of 1 October 2025 ([JWT signing keys](https://supabase.com/blog/jwt-signing-keys)).
+
+When this field is non-empty the process logs a warning at startup. The secret itself is never logged. `HS256` is not in the default `allowed_algs`; the operator must list it explicitly for the secret to have any effect.
 
 ## sync
 
