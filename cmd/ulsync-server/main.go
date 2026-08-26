@@ -14,6 +14,7 @@ import (
 
 	"github.com/ValeriusGC/ulsync-server/internal/config"
 	"github.com/ValeriusGC/ulsync-server/internal/httpapi"
+	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
 var version = "dev"
@@ -40,8 +41,16 @@ func run() int {
 		return 1
 	}
 
+	ctx := context.Background()
+	db, err := store.Open(ctx, cfg.Storage)
+	if err != nil {
+		logger.Error("open storage", "error", err)
+		return 1
+	}
+	defer db.Close()
+
 	startedAt := time.Now().UTC()
-	srv := httpapi.New(cfg, version, startedAt)
+	srv := httpapi.New(cfg, db, version, startedAt)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

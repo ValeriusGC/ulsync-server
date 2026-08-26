@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,19 +12,35 @@ import (
 	"time"
 
 	"github.com/ValeriusGC/ulsync-server/internal/config"
+	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
 func TestHealthReturnsJSON(t *testing.T) {
 	t.Parallel()
 
-	cfgPath := filepath.Join("..", "..", "config.example.yaml")
-	cfg, err := config.Load(cfgPath)
-	if err != nil {
-		t.Fatalf("Load() error = %v", err)
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Server: config.Server{
+			Bind:              "127.0.0.1:0",
+			ReadHeaderTimeout: config.Duration(5 * time.Second),
+			IdleTimeout:       config.Duration(120 * time.Second),
+			MaxBodyBytes:      1024,
+		},
+		Storage: config.Storage{
+			Driver: "sqlite",
+			Path:   filepath.Join(dir, "ulsync.db"),
+		},
 	}
 
+	ctx := context.Background()
+	db, err := store.Open(ctx, cfg.Storage)
+	if err != nil {
+		t.Fatalf("store.Open() error = %v", err)
+	}
+	defer db.Close()
+
 	startedAt := time.Date(2026, 8, 26, 7, 35, 42, 0, time.UTC)
-	srv := New(cfg, "test-version", startedAt)
+	srv := New(cfg, db, "test-version", startedAt)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()
@@ -36,20 +53,28 @@ func TestHealthReturnsJSON(t *testing.T) {
 		t.Fatalf("Content-Type = %q", ct)
 	}
 
-	var body map[string]string
+	var body struct {
+		Version   string `json:"version"`
+		StartedAt string `json:"started_at"`
+		Storage   struct {
+			Path      string `json:"path"`
+			SizeBytes int64  `json:"size_bytes"`
+		} `json:"storage"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
 	}
-	for _, key := range []string{"version", "started_at", "storage"} {
-		if body[key] == "" {
-			t.Fatalf("response[%q] is empty: %#v", key, body)
-		}
+	if body.Version != "test-version" {
+		t.Fatalf("version = %q", body.Version)
 	}
-	if body["version"] != "test-version" {
-		t.Fatalf("version = %q", body["version"])
+	if body.StartedAt == "" {
+		t.Fatal("started_at is empty")
 	}
-	if body["storage"] != cfg.Storage.Path {
-		t.Fatalf("storage = %q, want %q", body["storage"], cfg.Storage.Path)
+	if body.Storage.Path != cfg.Storage.Path {
+		t.Fatalf("storage.path = %q, want %q", body.Storage.Path, cfg.Storage.Path)
+	}
+	if body.Storage.SizeBytes <= 0 {
+		t.Fatalf("storage.size_bytes = %d, want > 0", body.Storage.SizeBytes)
 	}
 }
 

@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 12:35:42 +0500  
-**Version:** 1  
+**Updated:** 2026-08-26 14:40:04 +0500  
+**Version:** 2  
 **Document type:** readme
 
 Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
@@ -46,10 +46,14 @@ curl -sS localhost:8080/health
 Expected shape (values vary):
 
 ```json
-{"version":"dev","started_at":"2026-08-26T07:35:42Z","storage":"./data/ulsync.db"}
+{"version":"dev","started_at":"2026-08-26T07:35:42Z","storage":{"path":"./data/ulsync.db","size_bytes":4096}}
 ```
 
-No authentication is required. The response includes the configured storage path only; no secrets or database contents.
+No authentication is required. The response reports the database file path and size on disk; it does not expose secrets or database contents.
+
+## Storage
+
+The server uses a single SQLite database file configured by `storage.path`. One writer connection serializes all writes inside the process; readers use a separate pool. Schema migrations run automatically on startup when the store opens.
 
 ## Configuration
 
