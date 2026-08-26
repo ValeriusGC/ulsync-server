@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -54,6 +55,11 @@ func pushHandler(db *store.Store, maxEnvelopes int) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req pushRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			writePushError(w, http.StatusBadRequest, map[string]string{"error": "invalid json"})
 			return
 		}

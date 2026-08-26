@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -200,6 +201,7 @@ func TestVerifyJWKSOutageUsesCache(t *testing.T) {
 
 type httpEnv struct {
 	srv     *Server
+	db      *store.Store
 	jwks    *httptest.Server
 	hits    *atomic.Int32
 	ecPriv  *ecdsa.PrivateKey
@@ -271,6 +273,9 @@ func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 			Path:   filepath.Join(dir, "ulsync.db"),
 		},
 		Auth: authCfg,
+		Sync: config.Sync{
+			MaxEnvelopesPerPush: 1,
+		},
 	}
 	db, err := store.Open(context.Background(), cfg.Storage)
 	if err != nil {
@@ -279,7 +284,18 @@ func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 	t.Cleanup(func() { _ = db.Close() })
 
 	env.srv = New(cfg, db, verifier, "test-version", time.Now().UTC())
+	env.db = db
 	return env
+}
+
+func (e *httpEnv) push(t *testing.T, token string, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/push", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.srv.Handler().ServeHTTP(rec, req)
+	return rec
 }
 
 func (e *httpEnv) whoami(t *testing.T, token string) *httptest.ResponseRecorder {
