@@ -200,7 +200,8 @@ func TestVerifyJWKSOutageUsesCache(t *testing.T) {
 }
 
 type httpEnv struct {
-	srv     *Server
+	srv *Server
+	// db is kept so push tests can assert stored rows without duplicating SQL.
 	db      *store.Store
 	jwks    *httptest.Server
 	hits    *atomic.Int32
@@ -288,6 +289,8 @@ func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 	return env
 }
 
+// push posts one push request with the given bearer token and JSON body through
+// the full route table (auth middleware, body limit, push handler).
 func (e *httpEnv) push(t *testing.T, token string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sync/push", bytes.NewReader(body))

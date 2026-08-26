@@ -8,6 +8,9 @@ import (
 )
 
 const (
+	// upsertAllocateSeqSQL reserves the next per-user server_seq inside the same
+	// transaction as the envelope write. A separate round trip would allow the
+	// number to be issued without a matching row under concurrent pushes.
 	upsertAllocateSeqSQL = `
 		INSERT INTO users (user_id, next_seq) VALUES (?, 1)
 		ON CONFLICT (user_id) DO UPDATE SET next_seq = next_seq + 1
@@ -16,6 +19,9 @@ const (
 
 	// upsertEnvelopeSQL is fixed by the round 1 plan (§13.5). created_at_ms is
 	// intentionally absent from the UPDATE SET list: creation time never changes.
+	// The WHERE clause implements three tie-breakers so the outcome does not
+	// depend on arrival order. RETURNING answers whether the row was written:
+	// no row means the incoming envelope did not win (applied = false).
 	upsertEnvelopeSQL = `
 		INSERT INTO envelopes (user_id, id, part, entity_type, created_at_ms,
 		                       last_edited_at_ms, revision, source_id, flags,
@@ -45,9 +51,9 @@ const (
 // it means the stored envelope is not older than the incoming one.
 //
 // Sequence allocation and the envelope write run in one transaction on the
-// writer pool. The per-user counter is incremented before the upsert
-// decides; a rejected envelope consumes a sequence number that may never
-// appear on any row (gaps are legal per the sync protocol).
+// writer pool. The per-user counter is incremented before the upsert decides;
+// a rejected envelope consumes a sequence number that may never appear on any
+// row (gaps are legal per the sync protocol).
 func (s *Store) Upsert(ctx context.Context, userID string, e Envelope) (applied bool, err error) {
 	tx, err := s.writeDB.BeginTx(ctx, nil)
 	if err != nil {
@@ -64,6 +70,8 @@ func (s *Store) Upsert(ctx context.Context, userID string, e Envelope) (applied 
 		return false, fmt.Errorf("allocate sequence for user %q: %w", userID, err)
 	}
 
+	// applied is derived solely from RETURNING: a separate SELECT "what was stored"
+	// would add a round trip and race under concurrent writers for the same user.
 	var returnedSeq int64
 	err = tx.QueryRowContext(ctx, upsertEnvelopeSQL,
 		userID,
@@ -84,6 +92,7 @@ func (s *Store) Upsert(ctx context.Context, userID string, e Envelope) (applied 
 	case err == nil:
 		applied = true
 	case errors.Is(err, sql.ErrNoRows):
+		// The upsert WHERE rejected the incoming row; seq was still consumed above.
 		applied = false
 		err = nil
 	default:
