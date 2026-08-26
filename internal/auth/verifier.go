@@ -31,6 +31,12 @@ const (
 	maxJWKSBytes = 1 << 20
 
 	jwksFetchTimeout = 5 * time.Second
+
+	// unknownKIDRefetchInterval caps JWKS reloads triggered by a missing kid.
+	// Without this, a stream of invented kids would amplify traffic onto the
+	// identity provider. The limit is process-wide, not per kid. A failed
+	// fetch still counts: retrying a dead URL every request is the same attack.
+	unknownKIDRefetchInterval = time.Minute
 )
 
 // errUnauthorized is the only error Verify returns. The reason belongs in the
@@ -46,9 +52,10 @@ type Verifier struct {
 	log    *slog.Logger
 	parser *jwt.Parser
 
-	mu       sync.RWMutex
-	keys     map[string]crypto.PublicKey
-	loadedAt time.Time
+	mu                  sync.RWMutex
+	keys                map[string]crypto.PublicKey
+	loadedAt            time.Time
+	lastUnknownKIDFetch time.Time
 }
 
 // NewVerifier loads the initial key set and prepares a parser with the
@@ -121,6 +128,10 @@ func (v *Verifier) Verify(ctx context.Context, bearer string) (userID string, er
 
 	v.refreshIfStale(ctx)
 
+	if kid := peekKID(v.parser, bearer); kid != "" && !v.hasKey(kid) {
+		v.refetchUnknownKID(ctx)
+	}
+
 	claims := &jwt.RegisteredClaims{}
 	token, err := v.parser.ParseWithClaims(bearer, claims, v.keyFunc)
 	if err != nil {
@@ -168,6 +179,38 @@ func (v *Verifier) keyFunc(token *jwt.Token) (any, error) {
 		return nil, errUnauthorized
 	}
 	return key, nil
+}
+
+func (v *Verifier) hasKey(kid string) bool {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	_, ok := v.keys[kid]
+	return ok
+}
+
+// peekKID reads kid from an unverified header so Verify can refetch before
+// the signature check. The returned token is not trusted.
+func peekKID(parser *jwt.Parser, bearer string) string {
+	tok, _, err := parser.ParseUnverified(bearer, &jwt.RegisteredClaims{})
+	if err != nil {
+		return ""
+	}
+	kid, _ := tok.Header["kid"].(string)
+	return kid
+}
+
+func (v *Verifier) refetchUnknownKID(ctx context.Context) {
+	v.mu.Lock()
+	if !v.lastUnknownKIDFetch.IsZero() && time.Since(v.lastUnknownKIDFetch) < unknownKIDRefetchInterval {
+		v.mu.Unlock()
+		return
+	}
+	v.lastUnknownKIDFetch = time.Now()
+	v.mu.Unlock()
+
+	if err := v.reload(ctx); err != nil {
+		v.log.Warn("JWKS refetch on unknown kid failed; keeping last key set", "error", err)
+	}
 }
 
 func (v *Verifier) refreshIfStale(ctx context.Context) {
