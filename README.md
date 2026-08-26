@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 16:57:07 +0500  
-**Version:** 3  
+**Updated:** 2026-08-26 20:10:34 +0500  
+**Version:** 4  
 **Document type:** readme
 
 Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
@@ -73,6 +73,28 @@ Expected shape:
 ```
 
 Missing, malformed, or rejected tokens return `401` with body `{"error":"unauthorized"}` and header `WWW-Authenticate: Bearer`. The reason is written to the process log, not to the client. `GET /health` stays public so Docker and process supervisors can probe liveness without a token.
+
+## Push
+
+`POST /v1/sync/push` accepts exactly one envelope and reports whether the server stored it under last-write-wins rules. The response names `id`, `part`, and `applied` only; `server_seq` is omitted so the client cursor moves only from pull results.
+
+Round 1 accepts a single envelope per request. Send the whole envelope from the protocol fixture, including base64 `payload`:
+
+```bash
+TOKEN=<your bearer token>
+ENV=$(cat protocol/fixtures/envelope/minimal.json)
+curl -sS -X POST localhost:8080/v1/sync/push \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"envelopes\":[$ENV]}"
+```
+
+Expected first response (values match the fixture):
+
+```json
+{"results":[{"id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","part":"full","applied":true}]}
+```
+
+Sending the same body again returns HTTP `200` with `"applied":false`. That is success, not a conflict: the server already holds an envelope that is not inferior to the one just sent. Two envelopes in one request return `413`.
 
 ## Storage
 

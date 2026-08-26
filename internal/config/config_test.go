@@ -105,6 +105,7 @@ func TestDurationUnmarshalsFromString(t *testing.T) {
 	}
 }
 
+// writeTempConfig writes YAML to t.TempDir() and returns the file path for Load tests.
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 

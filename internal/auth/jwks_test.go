@@ -123,6 +123,7 @@ func TestParseJWKS_UnknownKTYLeavesSetIntact(t *testing.T) {
 	}
 }
 
+// rsaJWK serializes an RSA public key into JWKS JSON field map form.
 func rsaJWK(kid string, pub *rsa.PublicKey) map[string]string {
 	return map[string]string{
 		"kty": "RSA",
@@ -133,6 +134,7 @@ func rsaJWK(kid string, pub *rsa.PublicKey) map[string]string {
 	}
 }
 
+// ecJWK serializes a P-256 public key into JWKS JSON field map form.
 func ecJWK(kid string, pub *ecdsa.PublicKey) map[string]string {
 	xb := make([]byte, 32)
 	yb := make([]byte, 32)

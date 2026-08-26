@@ -22,9 +22,9 @@ var migrationFS embed.FS
 
 // migration is one versioned SQL file discovered from migrationFS.
 type migration struct {
-	version int
-	name    string
-	sql     string
+	version int    // numeric prefix from filename (NNNN_description.sql)
+	name    string // filename for error messages
+	sql     string // full file contents
 }
 
 // loadMigrations reads embedded *.sql files and sorts them by numeric version
@@ -96,6 +96,8 @@ func appliedMigrationVersion(ctx context.Context, db *sql.DB) (int, error) {
 	return int(maxVersion.Int64), nil
 }
 
+// isMissingTableError detects a fresh database before the first migration
+// creates schema_migrations.
 func isMissingTableError(err error) bool {
 	return strings.Contains(err.Error(), "no such table")
 }

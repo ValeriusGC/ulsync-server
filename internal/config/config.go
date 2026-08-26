@@ -25,7 +25,7 @@ import (
 )
 
 //go:embed defaults.yaml
-var defaultConfigYAML []byte
+var defaultConfigYAML []byte // compiled defaults merged before validation
 
 // Duration is a [time.Duration] that unmarshals from a Go duration string in YAML
 // (for example "5s" or "120s"). The stock yaml.v3 decoder treats unquoted

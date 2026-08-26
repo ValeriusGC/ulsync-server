@@ -77,6 +77,7 @@ func run() int {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Listen in a goroutine so the main goroutine can wait on signals or errors.
 	errCh := make(chan error, 1)
 	go func() {
 		logger.Info("server listening", "bind", cfg.Server.Bind)
@@ -91,6 +92,7 @@ func run() int {
 		}
 	case <-ctx.Done():
 		logger.Info("shutdown signal received")
+		// Allow in-flight requests up to 10s; after that Shutdown returns anyway.
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := srv.Shutdown(shutdownCtx); err != nil {

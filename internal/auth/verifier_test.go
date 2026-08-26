@@ -235,6 +235,7 @@ func TestVerifyJWKSOutageUsesCache(t *testing.T) {
 	}
 }
 
+// verifyEnv holds a Verifier wired to an httptest JWKS server and signing keys.
 type verifyEnv struct {
 	verifier *Verifier
 	server   *httptest.Server
@@ -245,6 +246,7 @@ type verifyEnv struct {
 	rsaKid   string
 }
 
+// newVerifyEnv constructs a Verifier that loads keys from a mock JWKS endpoint.
 func newVerifyEnv(t *testing.T, tweak func(*config.Auth)) *verifyEnv {
 	t.Helper()
 
@@ -299,6 +301,7 @@ func newVerifyEnv(t *testing.T, tweak func(*config.Auth)) *verifyEnv {
 	return env
 }
 
+// validClaims returns registered claims with a one-hour lifetime.
 func validClaims(sub string) jwt.RegisteredClaims {
 	now := time.Now()
 	return jwt.RegisteredClaims{
@@ -308,6 +311,7 @@ func validClaims(sub string) jwt.RegisteredClaims {
 	}
 }
 
+// signToken builds a signed JWT for unit tests, optionally setting kid.
 func signToken(t *testing.T, method jwt.SigningMethod, key any, kid string, claims jwt.RegisteredClaims) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(method, claims)
@@ -321,6 +325,7 @@ func signToken(t *testing.T, method jwt.SigningMethod, key any, kid string, clai
 	return signed
 }
 
+// noneToken builds an unsigned JWT with alg=none for rejection tests.
 func noneToken(t *testing.T, kid string, claims jwt.RegisteredClaims) string {
 	t.Helper()
 	header, err := json.Marshal(map[string]string{

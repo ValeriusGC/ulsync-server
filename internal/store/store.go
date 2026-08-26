@@ -34,9 +34,9 @@ import (
 //
 // Store methods are safe for concurrent use from multiple goroutines.
 type Store struct {
-	path    string
-	writeDB *sql.DB
-	readDB  *sql.DB
+	path    string  // configured SQLite file path for Stats and logging
+	writeDB *sql.DB // single connection; all mutations serialize here
+	readDB  *sql.DB // concurrent readers for Stats and future pull
 }
 
 // Stats is a snapshot of database counters and on-disk size. It is intended

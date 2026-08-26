@@ -30,6 +30,8 @@ const (
 	// maxJWKSBytes caps a JWKS response. The URL is an untrusted source.
 	maxJWKSBytes = 1 << 20
 
+	// jwksFetchTimeout bounds outbound JWKS fetches; the URL is operator-configured
+	// but still treated as an untrusted network peer.
 	jwksFetchTimeout = 5 * time.Second
 
 	// unknownKIDRefetchInterval caps JWKS reloads triggered by a missing kid.
@@ -53,9 +55,9 @@ type Verifier struct {
 	parser *jwt.Parser
 
 	mu                  sync.RWMutex
-	keys                map[string]crypto.PublicKey
-	loadedAt            time.Time
-	lastUnknownKIDFetch time.Time
+	keys                map[string]crypto.PublicKey // kid -> public key for signature verify
+	loadedAt            time.Time                   // when keys was last successfully reloaded
+	lastUnknownKIDFetch time.Time                   // rate-limits refetch on invented kids
 }
 
 // NewVerifier loads the initial key set and prepares a parser with the
@@ -128,6 +130,8 @@ func (v *Verifier) Verify(ctx context.Context, bearer string) (userID string, er
 
 	v.refreshIfStale(ctx)
 
+	// Refetch before signature verify when the header names an unknown kid, so a
+	// newly published signing key can appear without waiting for cache TTL.
 	if kid := peekKID(v.parser, bearer); kid != "" && !v.hasKey(kid) {
 		v.refetchUnknownKID(ctx)
 	}
@@ -149,6 +153,7 @@ func (v *Verifier) Verify(ctx context.Context, bearer string) (userID string, er
 	return claims.Subject, nil
 }
 
+// reject logs why a token failed. The HTTP layer must not forward reason.
 func (v *Verifier) reject(sub, reason string) {
 	attrs := []any{"reason", reason}
 	if sub != "" {
@@ -157,6 +162,7 @@ func (v *Verifier) reject(sub, reason string) {
 	v.log.Info("token rejected", attrs...)
 }
 
+// keyFunc supplies the public key (or dev HS256 secret) for jwt.ParseWithClaims.
 func (v *Verifier) keyFunc(token *jwt.Token) (any, error) {
 	alg, _ := token.Header["alg"].(string)
 	// HS256 must never be verified with a key from the JWKS: that is the
@@ -181,6 +187,7 @@ func (v *Verifier) keyFunc(token *jwt.Token) (any, error) {
 	return key, nil
 }
 
+// hasKey reports whether kid is present in the in-memory key set.
 func (v *Verifier) hasKey(kid string) bool {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
@@ -199,6 +206,8 @@ func peekKID(parser *jwt.Parser, bearer string) string {
 	return kid
 }
 
+// refetchUnknownKID reloads JWKS when the token names a kid we do not have,
+// at most once per unknownKIDRefetchInterval process-wide.
 func (v *Verifier) refetchUnknownKID(ctx context.Context) {
 	v.mu.Lock()
 	if !v.lastUnknownKIDFetch.IsZero() && time.Since(v.lastUnknownKIDFetch) < unknownKIDRefetchInterval {
@@ -213,6 +222,9 @@ func (v *Verifier) refetchUnknownKID(ctx context.Context) {
 	}
 }
 
+// refreshIfStale reloads JWKS when jwks_cache_ttl has elapsed. On failure the
+// last good key set is kept and loadedAt is bumped so a dead URL is not hit
+// on every request.
 func (v *Verifier) refreshIfStale(ctx context.Context) {
 	ttl := v.cfg.JWKSCacheTTL.Std()
 	if ttl <= 0 {
@@ -233,6 +245,7 @@ func (v *Verifier) refreshIfStale(ctx context.Context) {
 	}
 }
 
+// reload fetches keys from jwks_file or jwks_url depending on configuration.
 func (v *Verifier) reload(ctx context.Context) error {
 	if strings.TrimSpace(v.cfg.JWKSFile) != "" {
 		return v.loadFile()
@@ -243,6 +256,7 @@ func (v *Verifier) reload(ctx context.Context) error {
 	return nil
 }
 
+// loadFile reads and parses auth.jwks_file into the in-memory key set.
 func (v *Verifier) loadFile() error {
 	path := v.cfg.JWKSFile
 	data, err := os.ReadFile(path)
@@ -260,6 +274,7 @@ func (v *Verifier) loadFile() error {
 	return nil
 }
 
+// fetchURL downloads auth.jwks_url with a size cap and replaces the key set.
 func (v *Verifier) fetchURL(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, v.cfg.JWKSURL, nil)
 	if err != nil {
