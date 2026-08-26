@@ -108,6 +108,104 @@ func TestStrictSchemaRejectsStringInIntegerColumn(t *testing.T) {
 	}
 }
 
+func TestAllocateSeqIncrementsForSameUser(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := config.Storage{Driver: "sqlite", Path: filepath.Join(dir, "ulsync.db")}
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer s.Close()
+
+	for want := int64(1); want <= 3; want++ {
+		seq, err := s.AllocateSeq(ctx, "user-a")
+		if err != nil {
+			t.Fatalf("AllocateSeq() #%d error = %v", want, err)
+		}
+		if seq != want {
+			t.Fatalf("AllocateSeq() #%d = %d, want %d", want, seq, want)
+		}
+	}
+}
+
+func TestAllocateSeqConcurrentForOneUser(t *testing.T) {
+	const workers = 100
+
+	dir := t.TempDir()
+	cfg := config.Storage{Driver: "sqlite", Path: filepath.Join(dir, "ulsync.db")}
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer s.Close()
+
+	results := make(chan int64, workers)
+	for range workers {
+		go func() {
+			seq, err := s.AllocateSeq(ctx, "user-a")
+			if err != nil {
+				t.Errorf("AllocateSeq() error = %v", err)
+				results <- 0
+				return
+			}
+			results <- seq
+		}()
+	}
+
+	seen := make(map[int64]struct{}, workers)
+	for range workers {
+		seq := <-results
+		if seq == 0 {
+			continue
+		}
+		if _, exists := seen[seq]; exists {
+			t.Fatalf("duplicate sequence number %d", seq)
+		}
+		seen[seq] = struct{}{}
+	}
+
+	if len(seen) != workers {
+		t.Fatalf("got %d unique values, want %d", len(seen), workers)
+	}
+	for want := int64(1); want <= workers; want++ {
+		if _, ok := seen[want]; !ok {
+			t.Fatalf("missing sequence number %d", want)
+		}
+	}
+}
+
+func TestAllocateSeqIndependentPerUser(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	cfg := config.Storage{Driver: "sqlite", Path: filepath.Join(dir, "ulsync.db")}
+
+	ctx := context.Background()
+	s, err := store.Open(ctx, cfg)
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer s.Close()
+
+	seqA, err := s.AllocateSeq(ctx, "user-a")
+	if err != nil {
+		t.Fatalf("AllocateSeq(user-a) error = %v", err)
+	}
+	seqB, err := s.AllocateSeq(ctx, "user-b")
+	if err != nil {
+		t.Fatalf("AllocateSeq(user-b) error = %v", err)
+	}
+	if seqA != 1 || seqB != 1 {
+		t.Fatalf("first sequence numbers = (%d, %d), want (1, 1)", seqA, seqB)
+	}
+}
+
 func assertMigrationCount(t *testing.T, dbPath string, want int) {
 	t.Helper()
 

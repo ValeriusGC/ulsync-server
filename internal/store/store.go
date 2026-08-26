@@ -96,6 +96,22 @@ func (s *Store) Close() error {
 	return firstErr
 }
 
+// AllocateSeq reserves the next per-user sequence number, creating the user on
+// first use. The number is consumed even if the caller later rejects the
+// envelope: gaps in the sequence are part of the contract.
+func (s *Store) AllocateSeq(ctx context.Context, userID string) (int64, error) {
+	var seq int64
+	err := s.writeDB.QueryRowContext(ctx, `
+		INSERT INTO users (user_id, next_seq) VALUES (?, 1)
+		ON CONFLICT (user_id) DO UPDATE SET next_seq = next_seq + 1
+		RETURNING next_seq
+	`, userID).Scan(&seq)
+	if err != nil {
+		return 0, fmt.Errorf("allocate sequence for user %q: %w", userID, err)
+	}
+	return seq, nil
+}
+
 // Stats reports counters for the operations page. Each call runs COUNT queries
 // against the database; callers should poll on a timer (for example every few
 // seconds), not on every HTTP request.
