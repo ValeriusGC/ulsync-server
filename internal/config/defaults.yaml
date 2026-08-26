@@ -8,6 +8,7 @@ storage:
   path: "./data/ulsync.db"
 auth:
   jwks_url: "https://<project>.supabase.co/auth/v1/.well-known/jwks.json"
+  jwks_file: ""
   jwks_cache_ttl: "10m"
   allowed_algs: ["ES256", "RS256"]
   audience: []

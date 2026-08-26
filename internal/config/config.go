@@ -92,6 +92,9 @@ type Storage struct {
 type Auth struct {
 	// JWKSURL is the URL to fetch the JSON Web Key Set for JWT verification.
 	JWKSURL string `yaml:"jwks_url"`
+	// JWKSFile, when non-empty, is a path to a static JWKS document. The
+	// process reads this file and does not fetch JWKSURL.
+	JWKSFile string `yaml:"jwks_file"`
 	// JWKSCacheTTL is how long fetched JWKS keys remain cached in memory.
 	JWKSCacheTTL Duration `yaml:"jwks_cache_ttl"`
 	// AllowedAlgs lists accepted JWT signing algorithms (for example ES256, RS256).
