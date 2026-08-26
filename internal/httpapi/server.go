@@ -1,19 +1,31 @@
 // Package httpapi serves the HTTP surface of the sync server.
 //
-// Round 1 exposes only GET /health for process supervisors. Sync endpoints
-// (/v1/sync/push, pull, live) arrive in later steps. POST body size is capped
-// at the root handler so future routes inherit the limit without per-route wiring.
+// GET /health stays public for process supervisors. Every /v1/* route requires
+// a bearer token; GET /v1/whoami is the first protected endpoint. POST body
+// size is capped at the root handler so future routes inherit the limit
+// without per-route wiring.
 package httpapi
 
 import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/ValeriusGC/ulsync-server/internal/auth"
 	"github.com/ValeriusGC/ulsync-server/internal/config"
 	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
+
+// unauthorizedJSON is the only body returned for a rejected bearer token.
+// Distinct messages would let an attacker distinguish expired, unknown kid,
+// and malformed tokens.
+const unauthorizedJSON = `{"error":"unauthorized"}`
+
+// userIDKey is the context key for the subject placed by requireBearer.
+// An unexported type prevents other packages from overwriting it.
+type userIDKey struct{}
 
 // Server wraps net/http.Server with the route table for this process.
 type Server struct {
@@ -22,14 +34,19 @@ type Server struct {
 
 // New constructs an HTTP server bound to cfg.Server.Bind.
 //
-// db supplies live storage statistics for /health. version and startedAt are
-// echoed verbatim in the health JSON (startedAt is formatted as RFC 3339 UTC).
+// db supplies live storage statistics for /health. verifier authenticates
+// every /v1/* request. version and startedAt are echoed verbatim in the
+// health JSON (startedAt is formatted as RFC 3339 UTC).
 //
 // WriteTimeout is intentionally unset: long-lived SSE connections arrive in
 // step 06. Per-handler write deadlines will use http.ResponseController instead.
-func New(cfg *config.Config, db *store.Store, version string, startedAt time.Time) *Server {
+func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version string, startedAt time.Time) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(db, version, startedAt))
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /v1/whoami", whoami)
+	mux.Handle("/v1/", requireBearer(verifier, protected))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)
 
@@ -118,4 +135,46 @@ func limitPOSTBody(next http.Handler, maxBytes int64) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// UserID returns the subject placed in the context by the auth middleware.
+// It panics if the middleware did not run: that is a wiring bug, not a
+// request error.
+func UserID(ctx context.Context) string {
+	id, ok := ctx.Value(userIDKey{}).(string)
+	if !ok {
+		panic("httpapi.UserID: auth middleware did not run")
+	}
+	return id
+}
+
+func requireBearer(verifier *auth.Verifier, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		scheme, token, found := strings.Cut(r.Header.Get("Authorization"), " ")
+		if !found || !strings.EqualFold(scheme, "Bearer") || strings.TrimSpace(token) == "" {
+			writeUnauthorized(w)
+			return
+		}
+		userID, err := verifier.Verify(r.Context(), strings.TrimSpace(token))
+		if err != nil {
+			writeUnauthorized(w)
+			return
+		}
+		ctx := context.WithValue(r.Context(), userIDKey{}, userID)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func writeUnauthorized(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(unauthorizedJSON))
+}
+
+func whoami(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(struct {
+		UserID string `json:"user_id"`
+	}{UserID: UserID(r.Context())})
 }

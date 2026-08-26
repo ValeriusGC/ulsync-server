@@ -1,8 +1,9 @@
 // Command ulsync-server is the HTTP sync server for the ulsync protocol.
 //
 // Startup order: load YAML configuration, open the SQLite store (migrations
-// run automatically), then listen for HTTP. Shutdown on SIGINT/SIGTERM drains
-// in-flight HTTP requests before closing the database pools.
+// run automatically), construct the token verifier, then listen for HTTP.
+// Shutdown on SIGINT/SIGTERM drains in-flight HTTP requests before closing
+// the database pools.
 //
 // Build with an injected version string:
 //
@@ -22,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ValeriusGC/ulsync-server/internal/auth"
 	"github.com/ValeriusGC/ulsync-server/internal/config"
 	"github.com/ValeriusGC/ulsync-server/internal/httpapi"
 	"github.com/ValeriusGC/ulsync-server/internal/store"
@@ -63,8 +65,14 @@ func run() int {
 	}
 	defer db.Close()
 
+	verifier, err := auth.NewVerifier(cfg.Auth, nil, logger)
+	if err != nil {
+		logger.Error("init token verifier", "error", err)
+		return 1
+	}
+
 	startedAt := time.Now().UTC()
-	srv := httpapi.New(cfg, db, version, startedAt)
+	srv := httpapi.New(cfg, db, verifier, version, startedAt)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
