@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ValeriusGC/ulsync-server/internal/config"
+	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
 // Server wraps the HTTP listener and route table.
@@ -15,9 +16,9 @@ type Server struct {
 }
 
 // New builds the HTTP server from configuration.
-func New(cfg *config.Config, version string, startedAt time.Time) *Server {
+func New(cfg *config.Config, db *store.Store, version string, startedAt time.Time) *Server {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", healthHandler(version, startedAt, cfg.Storage.Path))
+	mux.HandleFunc("GET /health", healthHandler(db, version, startedAt))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)
 
@@ -48,19 +49,33 @@ func (s *Server) Handler() http.Handler {
 	return s.httpServer.Handler
 }
 
-type healthResponse struct {
-	Version   string `json:"version"`
-	StartedAt string `json:"started_at"`
-	Storage   string `json:"storage"`
+type storageHealth struct {
+	Path      string `json:"path"`
+	SizeBytes int64  `json:"size_bytes"`
 }
 
-func healthHandler(version string, startedAt time.Time, storagePath string) http.HandlerFunc {
+type healthResponse struct {
+	Version   string        `json:"version"`
+	StartedAt string        `json:"started_at"`
+	Storage   storageHealth `json:"storage"`
+}
+
+func healthHandler(db *store.Store, version string, startedAt time.Time) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		stats, err := db.Stats(r.Context())
+		if err != nil {
+			http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(healthResponse{
 			Version:   version,
 			StartedAt: startedAt.UTC().Format(time.RFC3339),
-			Storage:   storagePath,
+			Storage: storageHealth{
+				Path:      stats.Path,
+				SizeBytes: stats.SizeBytes,
+			},
 		})
 	}
 }
