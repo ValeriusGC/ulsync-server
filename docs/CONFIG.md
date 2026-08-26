@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 12:35:42 +0500  
-**Version:** 1  
+**Updated:** 2026-08-26 14:40:04 +0500  
+**Version:** 2  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -21,7 +21,16 @@ The server reads a single YAML file (see `config.example.yaml`). Every runtime p
 | Field | Type | Default | Purpose |
 |---|---|---|---|
 | `driver` | string | `sqlite` | Storage backend name (only `sqlite` in round 1). |
-| `path` | string | `./data/ulsync.db` | SQLite file path; shown in `/health` until the store is wired (step 02). |
+| `path` | string | `./data/ulsync.db` | SQLite database file path. |
+
+The server creates the parent directory and the database file on first start. Schema migrations run automatically when the store opens; no manual migration step is required.
+
+SQLite runs in WAL (write-ahead log) journal mode. Besides the main file at `storage.path`, the server creates companion files alongside it:
+
+- `<path>-wal` — uncommitted changes waiting to be checkpointed into the main file
+- `<path>-shm` — shared-memory index for WAL readers
+
+When copying or moving the database, copy all three files together while the server is stopped. Copying only the main `.db` file can leave recent writes in the WAL and produce a database that looks empty or stale.
 
 ## auth
 
