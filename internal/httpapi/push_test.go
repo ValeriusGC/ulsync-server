@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -403,14 +401,4 @@ func readStoredEnvelope(t *testing.T, db *store.Store, userID, id, part string) 
 		t.Fatalf("query envelope: %v", err)
 	}
 	return row
-}
-
-func loadProtocolFixture(t *testing.T, name string) []byte {
-	t.Helper()
-	path := filepath.Join("protocol", "fixtures", "envelope", name)
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) error = %v", path, err)
-	}
-	return data
 }

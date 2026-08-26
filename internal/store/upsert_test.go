@@ -1,7 +1,11 @@
 package store
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -103,6 +107,61 @@ func TestUpsertArrivalOrderIndependence(t *testing.T) {
 	}
 }
 
+func TestUpsertOpaqueNonUTF8Payload(t *testing.T) {
+	t.Parallel()
+
+	fixture := loadProtocolFixture(t, "non_utf8_payload.json")
+	var wire struct {
+		ID              string `json:"id"`
+		Part            string `json:"part"`
+		EntityType      string `json:"entity_type"`
+		CreatedAtMS     int64  `json:"created_at_ms"`
+		LastEditedAtMS  int64  `json:"last_edited_at_ms"`
+		Revision        int64  `json:"revision"`
+		SourceID        string `json:"source_id"`
+		Flags           int64  `json:"flags"`
+		SchemaVersion   int64  `json:"schema_version"`
+		PayloadEncoding string `json:"payload_encoding"`
+		Payload         string `json:"payload"`
+	}
+	if err := json.Unmarshal(fixture, &wire); err != nil {
+		t.Fatalf("Unmarshal fixture: %v", err)
+	}
+	payload, err := base64.StdEncoding.DecodeString(wire.Payload)
+	if err != nil {
+		t.Fatalf("DecodeString() error = %v", err)
+	}
+
+	ctx := context.Background()
+	s := openTestStore(t)
+	env := Envelope{
+		ID:              wire.ID,
+		Part:            wire.Part,
+		EntityType:      wire.EntityType,
+		CreatedAtMS:     wire.CreatedAtMS,
+		LastEditedAtMS:  wire.LastEditedAtMS,
+		Revision:        wire.Revision,
+		SourceID:        wire.SourceID,
+		Flags:           wire.Flags,
+		SchemaVersion:   wire.SchemaVersion,
+		PayloadEncoding: wire.PayloadEncoding,
+		Payload:         payload,
+	}
+	applied, err := s.Upsert(ctx, "user-a", env)
+	if err != nil {
+		t.Fatalf("Upsert() error = %v", err)
+	}
+	if !applied {
+		t.Fatal("Upsert() applied = false, want true")
+	}
+
+	row := readEnvelopeRow(t, s, "user-a", wire.ID, wire.Part)
+	want := []byte{0xFF, 0xFE, 0x00, 0x41}
+	if !bytes.Equal(row.Payload, want) {
+		t.Fatalf("payload = % x, want % x", row.Payload, want)
+	}
+}
+
 type envelopeRow struct {
 	ServerSeq int64
 	SourceID  string
@@ -151,4 +210,32 @@ func readEnvelopeRow(t *testing.T, s *Store, userID, id, part string) envelopeRo
 		t.Fatalf("read envelope row: %v", err)
 	}
 	return row
+}
+
+func loadProtocolFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	path := filepath.Join(moduleRoot(t), "protocol", "fixtures", "envelope", name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", path, err)
+	}
+	return data
+}
+
+func moduleRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd() error = %v", err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("go.mod not found while locating protocol fixture")
+		}
+		dir = parent
+	}
 }
