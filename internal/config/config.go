@@ -1,3 +1,16 @@
+// Package config loads and validates the single YAML configuration file that
+// drives every runtime path, bind address, and timeout in the server.
+//
+// Unknown YAML keys are rejected (KnownFields). Zero values in the file are
+// filled from embedded defaults.yaml before validation runs.
+//
+// Example:
+//
+//	cfg, err := config.Load("./config.yaml")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Println(cfg.Server.Bind)
 package config
 
 import (
@@ -14,12 +27,12 @@ import (
 //go:embed defaults.yaml
 var defaultConfigYAML []byte
 
-// Duration is a time.Duration that unmarshals from a Go duration string such
-// as "5s". The standard yaml decoder maps such strings to zero, which would
-// silently disable every timeout in the configuration.
+// Duration is a [time.Duration] that unmarshals from a Go duration string in YAML
+// (for example "5s" or "120s"). The stock yaml.v3 decoder treats unquoted
+// duration strings as zero, which would silently disable server timeouts.
 type Duration time.Duration
 
-// UnmarshalYAML parses a Go duration string from YAML.
+// UnmarshalYAML implements yaml.Unmarshaler for Duration fields.
 func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	if value == nil {
 		return nil
@@ -39,12 +52,13 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-// Std returns the underlying time.Duration value.
+// Std returns the underlying time.Duration for use with net/http and time APIs.
 func (d Duration) Std() time.Duration {
 	return time.Duration(d)
 }
 
-// Config holds all server settings loaded from a single YAML file.
+// Config is the root configuration document. Every field maps to a top-level
+// YAML section in config.yaml / config.example.yaml.
 type Config struct {
 	Server  Server  `yaml:"server"`
 	Storage Storage `yaml:"storage"`
@@ -53,46 +67,69 @@ type Config struct {
 	Admin   Admin   `yaml:"admin"`
 }
 
-// Server holds HTTP listener settings for sync endpoints.
+// Server holds HTTP listener settings for /health and future /v1/* sync routes.
 type Server struct {
-	Bind              string   `yaml:"bind"`
+	// Bind is the host:port address (for example "0.0.0.0:8080").
+	Bind string `yaml:"bind"`
+	// ReadHeaderTimeout closes connections that do not send headers in time.
 	ReadHeaderTimeout Duration `yaml:"read_header_timeout"`
-	IdleTimeout       Duration `yaml:"idle_timeout"`
-	MaxBodyBytes      int64    `yaml:"max_body_bytes"`
+	// IdleTimeout closes idle keep-alive connections.
+	IdleTimeout Duration `yaml:"idle_timeout"`
+	// MaxBodyBytes is the maximum POST body size accepted by the HTTP stack.
+	MaxBodyBytes int64 `yaml:"max_body_bytes"`
 }
 
-// Storage holds persistence settings.
+// Storage holds persistence settings. Round 1 supports driver "sqlite" only.
 type Storage struct {
+	// Driver names the storage backend ("sqlite" in round 1).
 	Driver string `yaml:"driver"`
-	Path   string `yaml:"path"`
+	// Path is the SQLite database file path. The parent directory is created on open.
+	Path string `yaml:"path"`
 }
 
-// Auth holds JWT verification settings (used from step 03).
+// Auth holds JWT verification settings. Used from step 03 onward; loaded and
+// validated here so a single config file describes the full deployment.
 type Auth struct {
-	JWKSURL        string   `yaml:"jwks_url"`
-	JWKSCacheTTL   Duration `yaml:"jwks_cache_ttl"`
-	AllowedAlgs    []string `yaml:"allowed_algs"`
-	Audience       []string `yaml:"audience"`
-	Issuer         string   `yaml:"issuer"`
-	DevHS256Secret string   `yaml:"dev_hs256_secret"`
+	// JWKSURL is the URL to fetch the JSON Web Key Set for JWT verification.
+	JWKSURL string `yaml:"jwks_url"`
+	// JWKSCacheTTL is how long fetched JWKS keys remain cached in memory.
+	JWKSCacheTTL Duration `yaml:"jwks_cache_ttl"`
+	// AllowedAlgs lists accepted JWT signing algorithms (for example ES256, RS256).
+	AllowedAlgs []string `yaml:"allowed_algs"`
+	// Audience, when non-empty, requires matching JWT aud claim values.
+	Audience []string `yaml:"audience"`
+	// Issuer, when non-empty, requires a matching JWT iss claim.
+	Issuer string `yaml:"issuer"`
+	// DevHS256Secret is a development-only shared secret for HS256 tokens (step 03).
+	DevHS256Secret string `yaml:"dev_hs256_secret"`
 }
 
-// Sync holds sync endpoint limits and timeouts.
+// Sync holds limits and timeouts for push, pull, and live sync endpoints.
 type Sync struct {
-	MaxEnvelopesPerPush int      `yaml:"max_envelopes_per_push"`
-	PullLimitDefault    int      `yaml:"pull_limit_default"`
-	PullLimitMax        int      `yaml:"pull_limit_max"`
-	LivePollTimeout     Duration `yaml:"live_poll_timeout"`
-	LiveHeartbeat       Duration `yaml:"live_heartbeat"`
+	// MaxEnvelopesPerPush caps envelopes per push request (1 in round 1).
+	MaxEnvelopesPerPush int `yaml:"max_envelopes_per_push"`
+	// PullLimitDefault is the page size when the client omits limit on pull.
+	PullLimitDefault int `yaml:"pull_limit_default"`
+	// PullLimitMax is the hard upper bound for pull limit.
+	PullLimitMax int `yaml:"pull_limit_max"`
+	// LivePollTimeout is how long live=poll waits before an empty response.
+	LivePollTimeout Duration `yaml:"live_poll_timeout"`
+	// LiveHeartbeat is the SSE comment interval to keep connections alive.
+	LiveHeartbeat Duration `yaml:"live_heartbeat"`
 }
 
-// Admin holds operations panel settings (listener in step 07).
+// Admin holds settings for the operations panel listener (step 07).
 type Admin struct {
-	Bind  string `yaml:"bind"`
+	// Bind is the host:port for /admin (default 127.0.0.1:8081).
+	Bind string `yaml:"bind"`
+	// Token is required when Bind is not loopback-only.
 	Token string `yaml:"token"`
 }
 
-// Load reads and validates configuration from path.
+// Load reads path, merges embedded defaults, and validates the result.
+//
+// Validation failures aggregate every problem into one error value so operators
+// can fix the config file in a single pass. Load rejects unknown YAML keys.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -113,6 +150,7 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// applyDefaults fills zero-valued fields from the embedded defaults.yaml.
 func (c *Config) applyDefaults() {
 	var defaults Config
 	if err := yaml.Unmarshal(defaultConfigYAML, &defaults); err != nil {
@@ -169,6 +207,7 @@ func (c *Config) applyDefaults() {
 	}
 }
 
+// validate checks cross-field constraints that YAML structure alone cannot express.
 func (c *Config) validate() error {
 	var problems []string
 
@@ -200,6 +239,7 @@ func (c *Config) validate() error {
 			),
 		)
 	}
+	// Refuse to start with a network-exposed admin listener and no shared secret.
 	if !isLoopbackBind(c.Admin.Bind) && strings.TrimSpace(c.Admin.Token) == "" {
 		problems = append(
 			problems,
@@ -213,6 +253,7 @@ func (c *Config) validate() error {
 	return fmt.Errorf("invalid configuration:\n- %s", strings.Join(problems, "\n- "))
 }
 
+// validateBind ensures bind is a non-empty host:port accepted by net.SplitHostPort.
 func validateBind(field, bind string) error {
 	if strings.TrimSpace(bind) == "" {
 		return fmt.Errorf("%s must not be empty", field)
@@ -223,6 +264,7 @@ func validateBind(field, bind string) error {
 	return nil
 }
 
+// isLoopbackBind reports whether bind listens only on localhost/loopback addresses.
 func isLoopbackBind(bind string) bool {
 	host, _, err := net.SplitHostPort(bind)
 	if err != nil {

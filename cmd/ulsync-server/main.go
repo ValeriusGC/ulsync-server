@@ -1,3 +1,13 @@
+// Command ulsync-server is the HTTP sync server for the ulsync protocol.
+//
+// Startup order: load YAML configuration, open the SQLite store (migrations
+// run automatically), then listen for HTTP. Shutdown on SIGINT/SIGTERM drains
+// in-flight HTTP requests before closing the database pools.
+//
+// Build with an injected version string:
+//
+//	go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" \
+//	  -o ulsync-server ./cmd/ulsync-server
 package main
 
 import (
@@ -17,12 +27,16 @@ import (
 	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
+// version is set at link time via -ldflags "-X main.version=...".
+// When unset, /health and -version report "dev".
 var version = "dev"
 
 func main() {
 	os.Exit(run())
 }
 
+// run is the real entry point so main can exit with a status code without
+// calling os.Exit from deferred cleanup paths.
 func run() int {
 	configPath := flag.String("config", "./config.yaml", "path to the YAML configuration file")
 	showVersion := flag.Bool("version", false, "print version and exit")

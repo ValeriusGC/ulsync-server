@@ -13,15 +13,22 @@ import (
 	"time"
 )
 
+// migrationFS holds SQL files compiled into the binary. A separate migrations
+// folder next to the executable is intentionally not supported: the server
+// ships as a single deployable file.
+//
 //go:embed migrations/*.sql
 var migrationFS embed.FS
 
+// migration is one versioned SQL file discovered from migrationFS.
 type migration struct {
 	version int
 	name    string
 	sql     string
 }
 
+// loadMigrations reads embedded *.sql files and sorts them by numeric version
+// parsed from the filename prefix (NNNN_description.sql).
 func loadMigrations() ([]migration, error) {
 	entries, err := fs.ReadDir(migrationFS, "migrations")
 	if err != nil {
@@ -57,6 +64,7 @@ func loadMigrations() ([]migration, error) {
 	return migrations, nil
 }
 
+// parseMigrationVersion extracts the leading integer from a migration filename.
 func parseMigrationVersion(name string) (int, error) {
 	prefix, _, ok := strings.Cut(name, "_")
 	if !ok {
@@ -69,6 +77,8 @@ func parseMigrationVersion(name string) (int, error) {
 	return version, nil
 }
 
+// appliedMigrationVersion returns the highest version recorded in
+// schema_migrations, or 0 when the table does not exist yet (fresh database).
 func appliedMigrationVersion(ctx context.Context, db *sql.DB) (int, error) {
 	var maxVersion sql.NullInt64
 	err := db.QueryRowContext(ctx, `
@@ -90,6 +100,8 @@ func isMissingTableError(err error) bool {
 	return strings.Contains(err.Error(), "no such table")
 }
 
+// applyMigrations runs every embedded migration with a version greater than
+// the latest applied version, in ascending version order.
 func applyMigrations(ctx context.Context, db *sql.DB) error {
 	migrations, err := loadMigrations()
 	if err != nil {
@@ -116,6 +128,9 @@ func applyMigrations(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+// applyMigration executes one migration file inside a single transaction on the
+// writer pool. DDL and the schema_migrations insert commit together; a failed
+// migration leaves no half-applied schema.
 func applyMigration(ctx context.Context, db *sql.DB, migration migration) error {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -125,6 +140,7 @@ func applyMigration(ctx context.Context, db *sql.DB, migration migration) error 
 		_ = tx.Rollback()
 	}()
 
+	// database/sql executes one statement per Exec; migration files may contain several.
 	for _, statement := range splitSQLStatements(migration.sql) {
 		if _, err := tx.ExecContext(ctx, statement); err != nil {
 			return fmt.Errorf("execute statement: %w", err)
@@ -144,6 +160,8 @@ func applyMigration(ctx context.Context, db *sql.DB, migration migration) error 
 	return nil
 }
 
+// splitSQLStatements splits a migration file on semicolons. Our migrations do
+// not embed semicolons inside string literals.
 func splitSQLStatements(sqlText string) []string {
 	parts := strings.Split(sqlText, ";")
 	statements := make([]string, 0, len(parts))

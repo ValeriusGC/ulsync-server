@@ -1,3 +1,19 @@
+// Package store provides embedded SQLite persistence for the sync server.
+//
+// A Store opens two connection pools against one database file: a single
+// writer serializes mutations inside the process, and multiple readers serve
+// concurrent lookups. Schema migrations ship inside the binary and run
+// automatically on [Open].
+//
+// Example:
+//
+//	db, err := store.Open(ctx, cfg.Storage)
+//	if err != nil {
+//	    return err
+//	}
+//	defer db.Close()
+//
+//	seq, err := db.AllocateSeq(ctx, userID)
 package store
 
 import (
@@ -13,24 +29,40 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// Store owns the SQLite database: schema migration, a single writer and a
-// pool of readers.
+// Store owns the SQLite database file, its schema version, and two connection
+// pools. All writes go through writeDB; reads may use readDB in parallel.
+//
+// Store methods are safe for concurrent use from multiple goroutines.
 type Store struct {
 	path    string
 	writeDB *sql.DB
 	readDB  *sql.DB
 }
 
-// Stats holds cheap-to-serialize counters for the operations page.
+// Stats is a snapshot of database counters and on-disk size. It is intended
+// for periodic polling (for example the operations panel in step 07), not for
+// per-request use on hot paths.
 type Stats struct {
-	Users     int64
+	// Users is the number of rows in the users table (one row per user_id that
+	// has ever received a server sequence number).
+	Users int64
+	// Envelopes is the number of stored envelope rows across all users.
 	Envelopes int64
-	Path      string
+	// Path is the configured SQLite file path (the main .db file, not -wal/-shm).
+	Path string
+	// SizeBytes is the size of Path on disk at the time Stats was collected.
 	SizeBytes int64
 }
 
-// Open creates the database directory, opens separate writer and reader pools,
-// and applies pending schema migrations.
+// Open prepares the database directory, connects writer and reader pools, and
+// applies any pending embedded migrations before returning.
+//
+// Open uses modernc.org/sqlite (pure Go, no CGO). The writer pool is capped
+// at one connection so concurrent writers queue inside the process instead of
+// receiving SQLITE_BUSY from the file. sql.Open does not create the file until
+// the first Ping, so Open always pings both pools.
+//
+// The caller must call [Store.Close] when the Store is no longer needed.
 func Open(ctx context.Context, cfg config.Storage) (*Store, error) {
 	if cfg.Driver != "sqlite" {
 		return nil, fmt.Errorf("unsupported storage driver %q", cfg.Driver)
@@ -80,7 +112,8 @@ func Open(ctx context.Context, cfg config.Storage) (*Store, error) {
 	return store, nil
 }
 
-// Close releases database connections.
+// Close closes the writer and reader pools. It is safe to call on a nil
+// receiver field-wise but should be called on a non-nil *Store returned from Open.
 func (s *Store) Close() error {
 	var firstErr error
 	if s.writeDB != nil {
@@ -96,9 +129,21 @@ func (s *Store) Close() error {
 	return firstErr
 }
 
-// AllocateSeq reserves the next per-user sequence number, creating the user on
-// first use. The number is consumed even if the caller later rejects the
-// envelope: gaps in the sequence are part of the contract.
+// AllocateSeq reserves the next per-user server_seq value in a single
+// round trip. The user row is created on first use; there is no separate
+// "create user" step.
+//
+// The sequence number is consumed even when a later envelope write is rejected.
+// Gaps in server_seq are allowed and expected by the sync protocol.
+//
+// AllocateSeq must run on the writer pool. Calling it through the reader pool
+// would race under concurrency.
+//
+// The statement is fixed by the round 1 plan (upsert with RETURNING):
+//
+//	INSERT INTO users (user_id, next_seq) VALUES (?, 1)
+//	ON CONFLICT (user_id) DO UPDATE SET next_seq = next_seq + 1
+//	RETURNING next_seq;
 func (s *Store) AllocateSeq(ctx context.Context, userID string) (int64, error) {
 	var seq int64
 	err := s.writeDB.QueryRowContext(ctx, `
@@ -112,9 +157,11 @@ func (s *Store) AllocateSeq(ctx context.Context, userID string) (int64, error) {
 	return seq, nil
 }
 
-// Stats reports counters for the operations page. Each call runs COUNT queries
-// against the database; callers should poll on a timer (for example every few
-// seconds), not on every HTTP request.
+// Stats returns user and envelope counts plus the database file size on disk.
+//
+// Each call issues two COUNT(*) queries and one os.Stat. Under load, calling
+// Stats on every HTTP request would become a self-inflicted denial of service.
+// Callers should cache or throttle results (the admin panel does this in step 07).
 func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	var stats Stats
 	stats.Path = s.path
@@ -134,6 +181,9 @@ func (s *Store) Stats(ctx context.Context) (Stats, error) {
 	return stats, nil
 }
 
+// writeDSN builds the writer connection string: WAL mode, immediate transaction
+// lock (_txlock=immediate), and a single connection cap enforced separately via
+// SetMaxOpenConns(1).
 func writeDSN(dbPath string) string {
 	return fmt.Sprintf(
 		"file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)&_txlock=immediate",
@@ -141,6 +191,8 @@ func writeDSN(dbPath string) string {
 	)
 }
 
+// readDSN builds the reader connection string. It omits _txlock because readers
+// never begin write transactions.
 func readDSN(dbPath string) string {
 	return fmt.Sprintf(
 		"file:%s?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)&_pragma=synchronous(NORMAL)&_pragma=foreign_keys(ON)",
