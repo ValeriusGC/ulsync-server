@@ -46,6 +46,7 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /v1/whoami", whoami)
+	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush))
 	mux.Handle("/v1/", requireBearer(verifier, protected))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)
