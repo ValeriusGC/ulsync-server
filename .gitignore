@@ -1,0 +1,6 @@
+/data/
+/ulsync-server
+config.yaml
+*.db
+*.db-wal
+*.db-shm

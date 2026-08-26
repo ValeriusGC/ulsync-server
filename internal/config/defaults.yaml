@@ -1,0 +1,24 @@
+server:
+  bind: "0.0.0.0:8080"
+  read_header_timeout: "5s"
+  idle_timeout: "120s"
+  max_body_bytes: 1048576
+storage:
+  driver: "sqlite"
+  path: "./data/ulsync.db"
+auth:
+  jwks_url: "https://<project>.supabase.co/auth/v1/.well-known/jwks.json"
+  jwks_cache_ttl: "10m"
+  allowed_algs: ["ES256", "RS256"]
+  audience: []
+  issuer: ""
+  dev_hs256_secret: ""
+sync:
+  max_envelopes_per_push: 1
+  pull_limit_default: 100
+  pull_limit_max: 500
+  live_poll_timeout: "55s"
+  live_heartbeat: "15s"
+admin:
+  bind: "127.0.0.1:8081"
+  token: ""

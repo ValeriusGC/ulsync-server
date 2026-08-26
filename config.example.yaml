@@ -1,0 +1,36 @@
+# HTTP listener for sync endpoints (/v1/* and /health).
+server:
+  bind: "0.0.0.0:8080"
+  # Maximum time to read request headers before the connection is closed.
+  read_header_timeout: "5s"
+  # Maximum time to keep idle keep-alive connections open.
+  idle_timeout: "120s"
+  # Maximum request body size in bytes (1 MiB).
+  max_body_bytes: 1048576
+
+# Local persistence. The database file is created in step 02; this path is shown in /health only.
+storage:
+  driver: "sqlite"
+  path: "./data/ulsync.db"
+
+# JWT verification for /v1/* (wired in step 03).
+auth:
+  jwks_url: "https://<project>.supabase.co/auth/v1/.well-known/jwks.json"
+  jwks_cache_ttl: "10m"
+  allowed_algs: ["ES256", "RS256"]
+  audience: []
+  issuer: ""
+  dev_hs256_secret: ""
+
+# Sync behaviour limits (handlers arrive in steps 04–06).
+sync:
+  max_envelopes_per_push: 1
+  pull_limit_default: 100
+  pull_limit_max: 500
+  live_poll_timeout: "55s"
+  live_heartbeat: "15s"
+
+# Operations panel (listener in step 07). Bind must stay on loopback unless token is set.
+admin:
+  bind: "127.0.0.1:8081"
+  token: ""
