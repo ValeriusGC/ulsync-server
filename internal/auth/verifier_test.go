@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -182,8 +183,62 @@ func TestVerifyAudienceIssuer(t *testing.T) {
 	}
 }
 
+func TestVerifyUnknownKIDRateLimit(t *testing.T) {
+	t.Parallel()
+
+	env := newVerifyEnv(t, nil)
+	other, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("GenerateKey() error = %v", err)
+	}
+	token := signToken(t, jwt.SigningMethodES256, other, "unknown-kid", validClaims("alice"))
+
+	afterStart := env.hits.Load()
+	if _, err := env.verifier.Verify(context.Background(), token); err == nil {
+		t.Fatal("Verify() succeeded for unknown kid")
+	}
+	afterFirst := env.hits.Load()
+	if afterFirst != afterStart+1 {
+		t.Fatalf("unknown kid JWKS fetches = %d, want 1 refetch (hits %d -> %d)", afterFirst-afterStart, afterStart, afterFirst)
+	}
+
+	if _, err := env.verifier.Verify(context.Background(), token); err == nil {
+		t.Fatal("Verify() succeeded for unknown kid on retry")
+	}
+	afterSecond := env.hits.Load()
+	if afterSecond != afterFirst {
+		t.Fatalf("second unknown kid hit JWKS (hits %d -> %d); refetch must be at most once a minute", afterFirst, afterSecond)
+	}
+}
+
+func TestVerifyJWKSOutageUsesCache(t *testing.T) {
+	t.Parallel()
+
+	env := newVerifyEnv(t, nil)
+	token := signToken(t, jwt.SigningMethodES256, env.ecPriv, env.ecKid, validClaims("alice"))
+	got, err := env.verifier.Verify(context.Background(), token)
+	if err != nil {
+		t.Fatalf("Verify() error = %v before outage", err)
+	}
+	if got != "alice" {
+		t.Fatalf("sub = %q, want alice", got)
+	}
+
+	env.server.Close()
+
+	got, err = env.verifier.Verify(context.Background(), token)
+	if err != nil {
+		t.Fatalf("Verify() error = %v after JWKS outage; cached keys should still verify", err)
+	}
+	if got != "alice" {
+		t.Fatalf("sub = %q, want alice", got)
+	}
+}
+
 type verifyEnv struct {
 	verifier *Verifier
+	server   *httptest.Server
+	hits     *atomic.Int32
 	ecPriv   *ecdsa.PrivateKey
 	rsaPriv  *rsa.PrivateKey
 	ecKid    string
@@ -207,6 +262,7 @@ func newVerifyEnv(t *testing.T, tweak func(*config.Auth)) *verifyEnv {
 		rsaPriv: rsaPriv,
 		ecKid:   "ec-1",
 		rsaKid:  "rsa-1",
+		hits:    &atomic.Int32{},
 	}
 	raw, err := json.Marshal(map[string]any{
 		"keys": []map[string]string{
@@ -219,10 +275,12 @@ func newVerifyEnv(t *testing.T, tweak func(*config.Auth)) *verifyEnv {
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		env.hits.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write(raw)
 	}))
 	t.Cleanup(srv.Close)
+	env.server = srv
 
 	cfg := config.Auth{
 		JWKSURL:      srv.URL,
