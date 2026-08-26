@@ -202,15 +202,17 @@ func TestVerifyJWKSOutageUsesCache(t *testing.T) {
 type httpEnv struct {
 	srv *Server
 	// db is kept so push tests can assert stored rows without duplicating SQL.
-	db      *store.Store
+	db *store.Store
+	// jwks serves a synthetic JWKS document; hits counts fetch attempts.
 	jwks    *httptest.Server
 	hits    *atomic.Int32
-	ecPriv  *ecdsa.PrivateKey
-	rsaPriv *rsa.PrivateKey
+	ecPriv  *ecdsa.PrivateKey // signs ES256 test tokens
+	rsaPriv *rsa.PrivateKey   // signs RS256 test tokens
 	ecKid   string
 	rsaKid  string
 }
 
+// newHTTPEnv builds a full HTTP stack with ephemeral SQLite and a mock JWKS URL.
 func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 	t.Helper()
 
@@ -301,6 +303,7 @@ func (e *httpEnv) push(t *testing.T, token string, body []byte) *httptest.Respon
 	return rec
 }
 
+// whoami hits GET /v1/whoami with the given bearer token.
 func (e *httpEnv) whoami(t *testing.T, token string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodGet, "/v1/whoami", nil)
@@ -310,6 +313,7 @@ func (e *httpEnv) whoami(t *testing.T, token string) *httptest.ResponseRecorder 
 	return rec
 }
 
+// assertUnauthorized checks the fixed 401 body and WWW-Authenticate header.
 func assertUnauthorized(t *testing.T, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusUnauthorized {
@@ -323,6 +327,7 @@ func assertUnauthorized(t *testing.T, rec *httptest.ResponseRecorder) {
 	}
 }
 
+// httpClaims returns registered claims with a one-hour lifetime for test tokens.
 func httpClaims(sub string) jwt.RegisteredClaims {
 	now := time.Now()
 	return jwt.RegisteredClaims{
@@ -332,6 +337,7 @@ func httpClaims(sub string) jwt.RegisteredClaims {
 	}
 }
 
+// signHTTPToken builds a signed JWT for httptest, optionally setting kid.
 func signHTTPToken(t *testing.T, method jwt.SigningMethod, key any, kid string, claims jwt.RegisteredClaims) string {
 	t.Helper()
 	tok := jwt.NewWithClaims(method, claims)
@@ -345,6 +351,7 @@ func signHTTPToken(t *testing.T, method jwt.SigningMethod, key any, kid string, 
 	return signed
 }
 
+// noneHTTPToken builds an unsigned JWT with alg=none for rejection tests.
 func noneHTTPToken(t *testing.T, kid string, claims jwt.RegisteredClaims) string {
 	t.Helper()
 	header, err := json.Marshal(map[string]string{"alg": "none", "typ": "JWT", "kid": kid})
@@ -359,6 +366,7 @@ func noneHTTPToken(t *testing.T, kid string, claims jwt.RegisteredClaims) string
 		base64.RawURLEncoding.EncodeToString(payload) + "."
 }
 
+// httpRSAJWK serializes an RSA public key into JWKS JSON field map form.
 func httpRSAJWK(kid string, pub *rsa.PublicKey) map[string]string {
 	return map[string]string{
 		"kty": "RSA",
@@ -369,6 +377,7 @@ func httpRSAJWK(kid string, pub *rsa.PublicKey) map[string]string {
 	}
 }
 
+// httpECJWK serializes a P-256 public key into JWKS JSON field map form.
 func httpECJWK(kid string, pub *ecdsa.PublicKey) map[string]string {
 	xb := make([]byte, 32)
 	yb := make([]byte, 32)

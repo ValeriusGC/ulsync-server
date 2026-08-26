@@ -1,8 +1,8 @@
 // Package httpapi serves the HTTP surface of the sync server.
 //
 // GET /health stays public for process supervisors. Every /v1/* route requires
-// a bearer token; GET /v1/whoami is the first protected endpoint. POST body
-// size is capped at the root handler so future routes inherit the limit
+// a bearer token. POST /v1/sync/push accepts one envelope under last-write-wins.
+// POST body size is capped at the root handler so future routes inherit the limit
 // without per-route wiring.
 package httpapi
 
@@ -44,6 +44,7 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(db, version, startedAt))
 
+	// All /v1/* routes share one auth wrapper and one POST body limit ancestor.
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /v1/whoami", whoami)
 	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush))
@@ -149,6 +150,9 @@ func UserID(ctx context.Context) string {
 	return id
 }
 
+// requireBearer wraps next so only requests with a valid bearer token reach
+// /v1/* handlers. The verified subject is stored in the request context for
+// UserID; failures always return the same 401 body (no token oracle).
 func requireBearer(verifier *auth.Verifier, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		scheme, token, found := strings.Cut(r.Header.Get("Authorization"), " ")
@@ -166,6 +170,7 @@ func requireBearer(verifier *auth.Verifier, next http.Handler) http.Handler {
 	})
 }
 
+// writeUnauthorized is the only 401 response on /v1/* sync routes.
 func writeUnauthorized(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	w.Header().Set("Content-Type", "application/json")
@@ -173,6 +178,8 @@ func writeUnauthorized(w http.ResponseWriter) {
 	_, _ = w.Write([]byte(unauthorizedJSON))
 }
 
+// whoami returns the authenticated subject. It exists for operators and for
+// the token-check path in the operations panel (step 07), not as a debug stub.
 func whoami(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(struct {

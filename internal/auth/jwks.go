@@ -19,14 +19,14 @@ type jwksDocument struct {
 
 // jwk is the subset of RFC 7517 / RFC 7518 fields this process understands.
 type jwk struct {
-	Kty string `json:"kty"`
-	Kid string `json:"kid"`
-	Use string `json:"use"`
-	Crv string `json:"crv"`
-	N   string `json:"n"`
-	E   string `json:"e"`
-	X   string `json:"x"`
-	Y   string `json:"y"`
+	Kty string `json:"kty"` // key type: RSA or EC
+	Kid string `json:"kid"` // key identifier matched against JWT header kid
+	Use string `json:"use"` // sig keys are kept; enc keys are skipped
+	Crv string `json:"crv"` // elliptic curve name (P-256 only)
+	N   string `json:"n"`   // RSA modulus (base64url)
+	E   string `json:"e"`   // RSA public exponent (base64url)
+	X   string `json:"x"`   // EC x coordinate (base64url)
+	Y   string `json:"y"`   // EC y coordinate (base64url)
 }
 
 // parseJWKS unpacks RSA (n, e) and P-256 (x, y) public keys from a JWKS
@@ -59,6 +59,9 @@ func parseJWKS(data []byte, log *slog.Logger) (map[string]crypto.PublicKey, erro
 	return out, nil
 }
 
+// publicKeyFromJWK converts one JWK entry or returns a skip reason when the
+// key type is foreign or the entry is malformed. Malformed supported-type keys
+// are skipped rather than failing the whole set.
 func publicKeyFromJWK(k jwk) (crypto.PublicKey, string, error) {
 	if k.Use == "enc" {
 		return nil, "use=enc", nil
@@ -79,6 +82,7 @@ func publicKeyFromJWK(k jwk) (crypto.PublicKey, string, error) {
 	}
 }
 
+// rsaPublicKey builds an RSA public key from JWKS n and e coordinates.
 func rsaPublicKey(k jwk) (crypto.PublicKey, string, error) {
 	n, err := decodeBase64URL(k.N)
 	if err != nil {
@@ -108,6 +112,7 @@ func rsaPublicKey(k jwk) (crypto.PublicKey, string, error) {
 	return &rsa.PublicKey{N: mod, E: exp}, "", nil
 }
 
+// ecdsaPublicKey builds a P-256 public key and rejects points off the curve.
 func ecdsaPublicKey(k jwk) (crypto.PublicKey, string, error) {
 	if k.Crv != "P-256" {
 		return nil, "unsupported curve", nil

@@ -138,6 +138,7 @@ func TestAuthWhoamiNoHeader(t *testing.T) {
 	}
 }
 
+// newTestAPI returns a Server with ephemeral storage and an empty JWKS file.
 func newTestAPI(t *testing.T) (*Server, *config.Config) {
 	t.Helper()
 
@@ -164,6 +165,7 @@ func newTestAPI(t *testing.T) (*Server, *config.Config) {
 	return New(cfg, db, testVerifier(t), "test-version", startedAt), cfg
 }
 
+// testVerifier builds a Verifier backed by an on-disk empty JWKS for smoke tests.
 func testVerifier(t *testing.T) *auth.Verifier {
 	t.Helper()
 

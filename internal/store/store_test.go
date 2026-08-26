@@ -206,6 +206,7 @@ func TestAllocateSeqIndependentPerUser(t *testing.T) {
 	}
 }
 
+// assertMigrationCount checks schema_migrations row count and version in a db file.
 func assertMigrationCount(t *testing.T, dbPath string, want int) {
 	t.Helper()
 

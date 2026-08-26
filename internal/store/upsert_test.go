@@ -162,12 +162,14 @@ func TestUpsertOpaqueNonUTF8Payload(t *testing.T) {
 	}
 }
 
+// envelopeRow is a subset of the envelopes table used in upsert white-box tests.
 type envelopeRow struct {
 	ServerSeq int64
 	SourceID  string
 	Payload   []byte
 }
 
+// openTestStore creates an isolated Store in t.TempDir() for upsert tests.
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 
@@ -181,6 +183,7 @@ func openTestStore(t *testing.T) *Store {
 	return s
 }
 
+// sampleEnvelope builds a test Envelope with a stable id and the given LWW fields.
 func sampleEnvelope(sourceID string, editedAt, revision int64, payload []byte) Envelope {
 	return Envelope{
 		ID:              "3f2504e0-4f89-11d3-9a0c-0305e82c3301",
@@ -197,6 +200,7 @@ func sampleEnvelope(sourceID string, editedAt, revision int64, payload []byte) E
 	}
 }
 
+// readEnvelopeRow reads selected columns through the store read pool (white-box test).
 func readEnvelopeRow(t *testing.T, s *Store, userID, id, part string) envelopeRow {
 	t.Helper()
 
@@ -212,6 +216,7 @@ func readEnvelopeRow(t *testing.T, s *Store, userID, id, part string) envelopeRo
 	return row
 }
 
+// loadProtocolFixture reads a golden envelope JSON from the protocol submodule.
 func loadProtocolFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	path := filepath.Join(moduleRoot(t), "protocol", "fixtures", "envelope", name)
@@ -222,6 +227,7 @@ func loadProtocolFixture(t *testing.T, name string) []byte {
 	return data
 }
 
+// moduleRoot walks upward from the test working directory to find go.mod.
 func moduleRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

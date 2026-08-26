@@ -329,6 +329,7 @@ func TestPushResponseOmitsServerSeq(t *testing.T) {
 	}
 }
 
+// storedEnvelope is a subset of the envelopes table used in push httptest asserts.
 type storedEnvelope struct {
 	ServerSeq int64
 	SourceID  string
@@ -336,6 +337,7 @@ type storedEnvelope struct {
 	Payload   []byte
 }
 
+// validWireEnvelope returns a minimal acceptable push body for httptest.
 func validWireEnvelope() wireEnvelope {
 	return wireEnvelope{
 		ID:              "env-1",
@@ -352,6 +354,7 @@ func validWireEnvelope() wireEnvelope {
 	}
 }
 
+// pushBody wraps one wire envelope in the push request JSON shape.
 func pushBody(t *testing.T, env wireEnvelope) []byte {
 	t.Helper()
 	body, err := json.Marshal(pushRequest{Envelopes: []wireEnvelope{env}})
@@ -361,6 +364,7 @@ func pushBody(t *testing.T, env wireEnvelope) []byte {
 	return body
 }
 
+// assertPushOK checks HTTP 200 and the single result applied flag.
 func assertPushOK(t *testing.T, rec *httptest.ResponseRecorder, wantApplied bool) {
 	t.Helper()
 	if rec.Code != http.StatusOK {
@@ -378,6 +382,7 @@ func assertPushOK(t *testing.T, rec *httptest.ResponseRecorder, wantApplied bool
 	}
 }
 
+// readStoredEnvelope queries the SQLite file backing db for test assertions.
 func readStoredEnvelope(t *testing.T, db *store.Store, userID, id, part string) storedEnvelope {
 	t.Helper()
 
