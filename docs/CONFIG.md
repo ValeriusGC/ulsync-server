@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 20:10:34 +0500  
-**Version:** 4  
+**Updated:** 2026-08-27 13:46:10 +0500  
+**Version:** 5  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -66,7 +66,7 @@ When this field is non-empty the process logs a warning at startup. The secret i
 
 Round 1 fixes this value at `1` on purpose. The handler, tests, and operator docs all assume a single envelope so conflict resolution and sequence allocation stay easy to reason about. Batching several envelopes in one HTTP request is round 2; the configuration key exists now so the limit is not hard-coded, but raising it above `1` in round 1 would violate the wire contract in `protocol/SPEC.md` §3.1.
 | `pull_limit_default` | integer | `100` | Default page size for pull when `limit` is omitted. |
-| `pull_limit_max` | integer | `500` | Hard cap for pull `limit`. |
+| `pull_limit_max` | integer | `500` | Hard cap for pull `limit`. Values above this cap are truncated to it and are not rejected. |
 | `live_poll_timeout` | duration | `55s` | Long-poll wait when `live=poll`. |
 | `live_heartbeat` | duration | `15s` | SSE comment interval to keep connections alive. |
 
