@@ -1,8 +1,8 @@
 # Open questions
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 16:57:07 +0500  
-**Version:** 3  
+**Updated:** 2026-08-27 13:46:10 +0500  
+**Version:** 4  
 **Document type:** log
 
 Findings that fall outside the current step are recorded here instead of being fixed opportunistically. Each entry has three parts: what was found, where, and why it is not resolved in this change.
@@ -32,3 +32,11 @@ Entries are reviewed at the end of round 1 (step 17).
 **Where:** `protocol/SPEC.md` operations section; this repository `GET /v1/whoami`.
 
 **Why not here:** Editing the protocol submodule is a different repository. Same follow-up as the `/health` storage object: a dedicated `ulsync-protocol` PR.
+
+## Pull `limit` above the configured maximum
+
+**Found:** protocol/SPEC.md §3.2 and §5 reject `limit` outside 1…500 with 400. This server clamps to `sync.pull_limit_max` and returns 200, matching the round-1 step 05 prompt.
+
+**Where:** `protocol/SPEC.md` pull limits; `GET /v1/sync/pull` query parsing.
+
+**Why not here:** The protocol lives in ulsync-protocol. A dedicated SPEC PR should say that a limit above the maximum is truncated, not rejected. This server step does not edit the submodule.

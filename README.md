@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-26 20:10:34 +0500  
-**Version:** 4  
+**Updated:** 2026-08-27 13:46:10 +0500  
+**Version:** 5  
 **Document type:** readme
 
 Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
@@ -95,6 +95,58 @@ Expected first response (values match the fixture):
 ```
 
 Sending the same body again returns HTTP `200` with `"applied":false`. That is success, not a conflict: the server already holds an envelope that is not inferior to the one just sent. Two envelopes in one request return `413`.
+
+## Pull
+
+`GET /v1/sync/pull` returns this user's envelopes with `server_seq` greater than `since`, in ascending order, and a `next_cursor` for the next request. An empty page is the normal stop of the catch-up loop, not an error. Pull responses include `server_seq`; push responses do not — the client cursor moves only from pull.
+
+Seed two envelopes first (a second `id`, or both pages with `limit=1` would be empty after the first):
+
+```bash
+TOKEN=<your bearer token>
+ENV1=$(cat protocol/fixtures/envelope/minimal.json)
+curl -sS -X POST localhost:8080/v1/sync/push \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"envelopes\":[$ENV1]}"
+ENV2=$(sed 's/3f2504e0-4f89-11d3-9a0c-0305e82c3301/3f2504e0-4f89-11d3-9a0c-0305e82c3302/' protocol/fixtures/envelope/minimal.json)
+curl -sS -X POST localhost:8080/v1/sync/push \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d "{\"envelopes\":[$ENV2]}"
+```
+
+Then walk with `limit=1`. Substitute the **returned** `next_cursor`; do not add `limit` in your head. Sequence gaps are legal, so arithmetic would skip rows. On a database that already had rows the numbers differ — use the `next_cursor` field, not this example.
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=0&limit=1'
+```
+
+Expected first page on a fresh store (`next_cursor` equals the page's `server_seq`):
+
+```json
+{"envelopes":[{"id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","part":"full","entity_type":"counter_operation","created_at_ms":1756100000000,"last_edited_at_ms":1756100000000,"revision":1,"source_id":"device-a","flags":0,"schema_version":1,"payload_encoding":"json","payload":"eyJ0eXBlIjoiaW5jcmVtZW50In0=","server_seq":1}],"next_cursor":1}
+```
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=1&limit=1'
+```
+
+Expected second page:
+
+```json
+{"envelopes":[{"id":"3f2504e0-4f89-11d3-9a0c-0305e82c3302","part":"full","entity_type":"counter_operation","created_at_ms":1756100000000,"last_edited_at_ms":1756100000000,"revision":1,"source_id":"device-a","flags":0,"schema_version":1,"payload_encoding":"json","payload":"eyJ0eXBlIjoiaW5jcmVtZW50In0=","server_seq":2}],"next_cursor":2}
+```
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=2&limit=1'
+```
+
+Expected empty page (`next_cursor` equals the submitted `since`, not zero):
+
+```json
+{"envelopes":[],"next_cursor":2}
+```
+
+Omit `limit` to use `sync.pull_limit_default` (100). A `limit` above `sync.pull_limit_max` is truncated to that cap and still returns `200`. Unknown query parameters are ignored.
 
 ## Storage
 

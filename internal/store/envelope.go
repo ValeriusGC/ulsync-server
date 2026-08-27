@@ -31,4 +31,9 @@ type Envelope struct {
 
 	// Payload is opaque bytes after base64 decoding; not validated as JSON or UTF-8.
 	Payload []byte
+
+	// ServerSeq is the per-user cursor assigned at write time. Since fills it
+	// from the stored row. Upsert ignores this field and allocates the number
+	// inside its transaction.
+	ServerSeq int64
 }
