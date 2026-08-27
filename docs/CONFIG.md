@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-27 13:46:10 +0500  
-**Version:** 5  
+**Updated:** 2026-08-27 20:16:00 +0500  
+**Version:** 6  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -80,3 +80,32 @@ Round 1 fixes this value at `1` on purpose. The handler, tests, and operator doc
 ## Admin bind safety
 
 The server refuses to start when `admin.bind` listens on a non-loopback address (for example `0.0.0.0:8081`) while `admin.token` is empty. Without this check, the operations page could be exposed on the network by a configuration mistake long before step 07 adds the listener. Fix by binding to `127.0.0.1` or setting a non-empty `admin.token`.
+
+## Reverse proxies and buffering
+
+Nginx buffers proxy responses by default. For `live=sse` that means events sit in the proxy until the buffer fills or the connection closes, then arrive as one chunk — the live feed is no longer live. `proxy_read_timeout` must also exceed `sync.live_poll_timeout` (55s), otherwise Nginx closes a quiet long-poll before the server answers.
+
+This fragment is canonical for the repository. Step 09 compose files must include these directives, not a paraphrase:
+
+```nginx
+# Canonical Nginx fragment for ulsync live pull (SSE and long-poll).
+# Step 09 compose files must include these directives, not a paraphrase.
+location /v1/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Connection "";
+    proxy_set_header Authorization $http_authorization;
+    proxy_buffering off;
+    proxy_cache off;
+    gzip off;
+    # Exceeds sync.live_poll_timeout (55s) and the 15s SSE heartbeat.
+    proxy_read_timeout 120s;
+}
+```
+
+Caddy streams `text/event-stream` without extra directives. A minimal reverse proxy is enough:
+
+```caddy
+reverse_proxy localhost:8080
+```
