@@ -2,6 +2,7 @@
 //
 // GET /health stays public for process supervisors. Every /v1/* route requires
 // a bearer token. POST /v1/sync/push accepts one envelope under last-write-wins.
+// GET /v1/sync/pull returns that user's envelopes after a cursor.
 // POST body size is capped at the root handler so future routes inherit the limit
 // without per-route wiring.
 package httpapi
@@ -48,6 +49,7 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /v1/whoami", whoami)
 	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush))
+	protected.HandleFunc("GET /v1/sync/pull", pullHandler(db, cfg.Sync.PullLimitDefault, cfg.Sync.PullLimitMax))
 	mux.Handle("/v1/", requireBearer(verifier, protected))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)

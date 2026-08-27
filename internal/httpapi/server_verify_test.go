@@ -214,6 +214,12 @@ type httpEnv struct {
 
 // newHTTPEnv builds a full HTTP stack with ephemeral SQLite and a mock JWKS URL.
 func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
+	return newHTTPEnvWith(t, tweak, nil)
+}
+
+// newHTTPEnvWith builds the same stack as newHTTPEnv, then lets the test
+// override config fields (pull limits in step 05).
+func newHTTPEnvWith(t *testing.T, tweakAuth func(*config.Auth), tweakCfg func(*config.Config)) *httpEnv {
 	t.Helper()
 
 	ecPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
@@ -255,8 +261,8 @@ func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 		JWKSCacheTTL: config.Duration(10 * time.Minute),
 		AllowedAlgs:  []string{"ES256", "RS256"},
 	}
-	if tweak != nil {
-		tweak(&authCfg)
+	if tweakAuth != nil {
+		tweakAuth(&authCfg)
 	}
 	verifier, err := auth.NewVerifier(authCfg, jwks.Client(), slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -278,7 +284,12 @@ func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 		Auth: authCfg,
 		Sync: config.Sync{
 			MaxEnvelopesPerPush: 1,
+			PullLimitDefault:    100,
+			PullLimitMax:        500,
 		},
+	}
+	if tweakCfg != nil {
+		tweakCfg(cfg)
 	}
 	db, err := store.Open(context.Background(), cfg.Storage)
 	if err != nil {
@@ -289,6 +300,19 @@ func newHTTPEnv(t *testing.T, tweak func(*config.Auth)) *httpEnv {
 	env.srv = New(cfg, db, verifier, "test-version", time.Now().UTC())
 	env.db = db
 	return env
+}
+
+// pull GETs /v1/sync/pull with rawQuery (no leading ?) and an optional bearer.
+// An empty token omits Authorization so the 401 path can be exercised.
+func (e *httpEnv) pull(t *testing.T, token, rawQuery string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/pull?"+rawQuery, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	e.srv.Handler().ServeHTTP(rec, req)
+	return rec
 }
 
 // push posts one push request with the given bearer token and JSON body through
