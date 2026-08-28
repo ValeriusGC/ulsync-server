@@ -60,6 +60,27 @@
       }
       document.getElementById('config').textContent = JSON.stringify(s.config, null, 2);
     };
+    document.getElementById('token-check').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = document.getElementById('token-input').value;
+      const out = document.getElementById('token-result');
+      out.textContent = '…';
+      try {
+        const resp = await fetch('/admin/token-check', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({token}),
+        });
+        const body = await resp.json();
+        if (body.valid) {
+          out.textContent = 'valid: subject=' + body.subject;
+        } else {
+          out.textContent = 'invalid: ' + body.reason;
+        }
+      } catch (err) {
+        out.textContent = 'request failed';
+      }
+    });
   </script>
 </body>
 </html>

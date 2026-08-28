@@ -301,6 +301,36 @@ func newVerifyEnv(t *testing.T, tweak func(*config.Auth)) *verifyEnv {
 	return env
 }
 
+func TestDiagnoseValid(t *testing.T) {
+	t.Parallel()
+
+	env := newVerifyEnv(t, nil)
+	token := signToken(t, jwt.SigningMethodES256, env.ecPriv, env.ecKid, validClaims("alice"))
+	got := env.verifier.Diagnose(context.Background(), token)
+	if !got.Valid {
+		t.Fatalf("Valid = false, reason = %q", got.Reason)
+	}
+	if got.Subject != "alice" {
+		t.Fatalf("Subject = %q, want alice", got.Subject)
+	}
+	if got.Reason != "" {
+		t.Fatalf("Reason = %q, want empty", got.Reason)
+	}
+}
+
+func TestDiagnoseGarbage(t *testing.T) {
+	t.Parallel()
+
+	env := newVerifyEnv(t, nil)
+	got := env.verifier.Diagnose(context.Background(), "nope")
+	if got.Valid {
+		t.Fatal("Valid = true for garbage token")
+	}
+	if got.Reason == "" {
+		t.Fatal("Reason empty for garbage token")
+	}
+}
+
 // validClaims returns registered claims with a one-hour lifetime.
 func validClaims(sub string) jwt.RegisteredClaims {
 	now := time.Now()

@@ -45,6 +45,14 @@ const (
 // log, not in the value the HTTP layer forwards to the client.
 var errUnauthorized = errors.New("unauthorized")
 
+// DiagnoseResult is the outcome of a panel-side token check. Reason is empty
+// if and only if Valid is true.
+type DiagnoseResult struct {
+	Valid   bool
+	Subject string
+	Reason  string
+}
+
 // Verifier checks bearer tokens against a set of public keys and extracts the
 // subject. It never issues tokens and never talks to the identity provider
 // except to fetch public keys.
@@ -123,15 +131,24 @@ func NewVerifier(cfg config.Auth, client *http.Client, log *slog.Logger) (*Verif
 // Verify returns the subject of a valid token. Every failure returns the same
 // opaque error to the caller: the reason goes to the log, not to the client.
 func (v *Verifier) Verify(ctx context.Context, bearer string) (userID string, err error) {
+	result := v.Diagnose(ctx, bearer)
+	if !result.Valid {
+		return "", errUnauthorized
+	}
+	return result.Subject, nil
+}
+
+// Diagnose parses and verifies a bearer token for the operations panel.
+// Unlike Verify, it returns a human-readable Reason on failure so operators
+// can fix misconfigured clients without exposing that oracle on /v1/*.
+func (v *Verifier) Diagnose(ctx context.Context, bearer string) DiagnoseResult {
 	if bearer == "" {
 		v.reject("", "missing token")
-		return "", errUnauthorized
+		return DiagnoseResult{Valid: false, Reason: "missing token"}
 	}
 
 	v.refreshIfStale(ctx)
 
-	// Refetch before signature verify when the header names an unknown kid, so a
-	// newly published signing key can appear without waiting for cache TTL.
 	if kid := peekKID(v.parser, bearer); kid != "" && !v.hasKey(kid) {
 		v.refetchUnknownKID(ctx)
 	}
@@ -140,17 +157,17 @@ func (v *Verifier) Verify(ctx context.Context, bearer string) (userID string, er
 	token, err := v.parser.ParseWithClaims(bearer, claims, v.keyFunc)
 	if err != nil {
 		v.reject(claims.Subject, err.Error())
-		return "", errUnauthorized
+		return DiagnoseResult{Valid: false, Reason: err.Error()}
 	}
 	if !token.Valid {
 		v.reject(claims.Subject, "token not valid")
-		return "", errUnauthorized
+		return DiagnoseResult{Valid: false, Reason: "token not valid"}
 	}
 	if claims.Subject == "" {
 		v.reject("", "empty or missing sub")
-		return "", errUnauthorized
+		return DiagnoseResult{Valid: false, Reason: "empty or missing sub"}
 	}
-	return claims.Subject, nil
+	return DiagnoseResult{Valid: true, Subject: claims.Subject}
 }
 
 // reject logs why a token failed. The HTTP layer must not forward reason.

@@ -8,6 +8,8 @@ import (
 	"context"
 	"crypto/subtle"
 	"embed"
+	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 	"strings"
@@ -22,6 +24,10 @@ import (
 
 //go:embed index.html
 var pageFS embed.FS
+
+// maxTokenCheckBytes caps POST /admin/token-check bodies. The limit is fixed in
+// code, not YAML: the endpoint accepts pasted JWTs, not arbitrary uploads.
+const maxTokenCheckBytes = 8192
 
 // indexHTML is the embedded operations page served at GET /admin.
 var indexHTML []byte
@@ -108,6 +114,7 @@ func New(
 
 	mux.Handle("GET /admin", http.HandlerFunc(s.servePage))
 	s.enableSnapshot(mux)
+	mux.Handle("POST /admin/token-check", http.HandlerFunc(s.serveTokenCheck))
 
 	root := http.Handler(mux)
 	if token := strings.TrimSpace(cfg.Admin.Token); token != "" {
@@ -142,6 +149,47 @@ func (s *Server) servePage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(indexHTML)
+}
+
+// tokenCheckRequest is the JSON body for POST /admin/token-check.
+type tokenCheckRequest struct {
+	Token string `json:"token"`
+}
+
+// tokenCheckResponse is returned for a well-formed token-check request.
+type tokenCheckResponse struct {
+	Valid   bool   `json:"valid"`
+	Subject string `json:"subject,omitempty"`
+	Reason  string `json:"reason,omitempty"`
+}
+
+// serveTokenCheck validates a user JWT and reports the subject or reason.
+// Malformed requests receive 400; valid JSON always receives 200.
+func (s *Server) serveTokenCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxTokenCheckBytes)
+	defer r.Body.Close()
+
+	var req tokenCheckRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err == io.EOF {
+			http.Error(w, "empty body", http.StatusBadRequest)
+			return
+		}
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	result := s.verifier.Diagnose(r.Context(), strings.TrimSpace(req.Token))
+	w.Header().Set("Content-Type", "application/json")
+	if result.Valid {
+		_ = json.NewEncoder(w).Encode(tokenCheckResponse{Valid: true, Subject: result.Subject})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(tokenCheckResponse{Valid: false, Reason: result.Reason})
 }
 
 // requireAdminBearer protects all panel routes when admin.token is configured.
