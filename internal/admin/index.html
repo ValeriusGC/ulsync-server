@@ -34,5 +34,32 @@
     <button type="submit">Check token</button>
     <output id="token-result"></output>
   </form>
+  <script>
+    const es = new EventSource('/admin/events');
+    es.onmessage = (ev) => {
+      const s = JSON.parse(ev.data);
+      document.getElementById('version').textContent = s.version;
+      document.getElementById('started_at').textContent = s.started_at;
+      document.getElementById('uptime_seconds').textContent = s.uptime_seconds;
+      document.getElementById('storage_path').textContent = s.storage.path;
+      document.getElementById('storage_size_bytes').textContent = s.storage.size_bytes;
+      document.getElementById('storage_users').textContent = s.storage.users;
+      document.getElementById('storage_envelopes').textContent = s.storage.envelopes;
+      document.getElementById('in_flight').textContent = s.requests.in_flight;
+      const total = s.requests.total;
+      const pct = (n) => total === 0 ? '0%' : ((100 * n / total).toFixed(1) + '%');
+      document.getElementById('requests').textContent =
+        total + ' / ' + s.requests.status_4xx + ' (' + pct(s.requests.status_4xx) + ') / ' +
+        s.requests.status_5xx + ' (' + pct(s.requests.status_5xx) + ')';
+      document.getElementById('live_connections').textContent = s.live_connections;
+      document.getElementById('p95_ms').textContent = s.p95_ms;
+      if (s.last_error) {
+        document.getElementById('last_error').textContent = s.last_error.text + ' at ' + s.last_error.at;
+      } else {
+        document.getElementById('last_error').textContent = '—';
+      }
+      document.getElementById('config').textContent = JSON.stringify(s.config, null, 2);
+    };
+  </script>
 </body>
 </html>

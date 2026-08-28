@@ -54,6 +54,8 @@ type Server struct {
 	opts      Options
 
 	httpServer *http.Server
+	// snap holds the cached Stats and latest assembled frame for SSE clients.
+	snap *snapshotState
 	// stopSnapshot cancels the background snapshot ticker goroutine.
 	stopSnapshot context.CancelFunc
 }
@@ -105,6 +107,7 @@ func New(
 	}
 
 	mux.Handle("GET /admin", http.HandlerFunc(s.servePage))
+	s.enableSnapshot(mux)
 
 	root := http.Handler(mux)
 	if token := strings.TrimSpace(cfg.Admin.Token); token != "" {
