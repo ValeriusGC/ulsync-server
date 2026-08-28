@@ -57,6 +57,12 @@ func (d Duration) Std() time.Duration {
 	return time.Duration(d)
 }
 
+// MarshalYAML implements yaml.Marshaler so duration fields serialize as human-
+// readable strings (for example "5s") instead of raw nanoseconds in snapshots.
+func (d Duration) MarshalYAML() (interface{}, error) {
+	return time.Duration(d).String(), nil
+}
+
 // Config is the root configuration document. Every field maps to a top-level
 // YAML section in config.yaml / config.example.yaml.
 type Config struct {
@@ -278,4 +284,32 @@ func isLoopbackBind(bind string) bool {
 	}
 	ip := net.ParseIP(host)
 	return ip != nil && ip.IsLoopback()
+}
+
+const (
+	redactedSecret   = "***"     // placeholder for non-empty secrets in Redacted()
+	emptySecretLabel = "(empty)" // placeholder for empty secrets in Redacted()
+)
+
+// Redacted returns a copy of c with sensitive fields masked for display.
+//
+// auth.dev_hs256_secret and admin.token become "***" when non-empty after
+// TrimSpace, or "(empty)" when blank. The live configuration is not modified;
+// callers must not assign the result back over *c or panel authentication
+// would compare against "***".
+func (c Config) Redacted() Config {
+	out := c
+	out.Auth.AllowedAlgs = append([]string(nil), c.Auth.AllowedAlgs...)
+	out.Auth.Audience = append([]string(nil), c.Auth.Audience...)
+	if strings.TrimSpace(c.Auth.DevHS256Secret) != "" {
+		out.Auth.DevHS256Secret = redactedSecret
+	} else {
+		out.Auth.DevHS256Secret = emptySecretLabel
+	}
+	if strings.TrimSpace(c.Admin.Token) != "" {
+		out.Admin.Token = redactedSecret
+	} else {
+		out.Admin.Token = emptySecretLabel
+	}
+	return out
 }
