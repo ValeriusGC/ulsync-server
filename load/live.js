@@ -3,7 +3,7 @@
  *
  * xk6-sse blocks the VU for the entire connection lifetime, so this script checks
  * per-user isolation and wakeup latency, not 70 000-connection capacity.
- * Community extension k6/x/sse — not Grafana core k6.
+ * Community extension k6/x/sse — requires load/k6-sse binary (see docs/LOAD.md).
  *
  * Default 100×7 is the acceptance scale, not a reduced substitute for 1 000×7.
  * SMOKE=1 → 10×7 = 70 VU to prove the extension loads; do not copy into LOAD.md.
@@ -13,7 +13,7 @@
 
 import http from 'k6/http';
 import sse from 'k6/x/sse';
-import { check, sleep } from 'k6';
+import { check } from 'k6';
 import { Counter } from 'k6/metrics';
 import { SharedArray } from 'k6/data';
 
@@ -28,10 +28,10 @@ if (!Number.isInteger(LIVE_USERS) || LIVE_USERS < 1) {
 const foreignEnvelopes = new Counter('foreign_envelopes');
 
 const tokens = new SharedArray('tokens', () => {
-  const list = JSON.parse(open('load/tokens.json'));
+  const list = JSON.parse(open('tokens.json'));
   if (list.length < LIVE_USERS) {
     throw new Error(
-      `load/tokens.json has ${list.length} tokens, need at least ${LIVE_USERS}; rerun gentokens`,
+      `tokens.json has ${list.length} tokens, need at least ${LIVE_USERS}; rerun gentokens`,
     );
   }
   return list;
@@ -63,42 +63,35 @@ export const options = {
 export function receive() {
   const userIdx = Math.floor((__VU - 1) / 7);
   const token = tokens[userIdx];
-  const headers = { Authorization: `Bearer ${token}` };
+  const params = {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { name: 'sse' },
+  };
 
   let pings = 0;
   let gotEnvelope = false;
   let envelopeAt = 0;
   const started = Date.now();
 
-  const res = sse.open(`${BASE}/v1/sync/pull?since=0&live=sse`, {
-    headers,
-    timeout: '60s',
-    tags: { name: 'sse' },
-  });
-
-  if (!res) {
-    check(null, { 'sse open': () => false });
-    return;
-  }
-
-  res.addEventListener('event', (event) => {
-    // xk6-sse: named events use event.name; SSE comments use event.comment.
-    if (event.name === 'envelope') {
-      if (userIdx === 0) {
-        gotEnvelope = true;
-        envelopeAt = Date.now();
-      } else {
-        foreignEnvelopes.add(1);
+  const response = sse.open(`${BASE}/v1/sync/pull?since=0&live=sse`, params, (client) => {
+    client.on('event', (event) => {
+      // xk6-sse: named events use event.name; SSE comments use event.comment.
+      if (event.name === 'envelope') {
+        if (userIdx === 0) {
+          gotEnvelope = true;
+          envelopeAt = Date.now();
+        } else {
+          foreignEnvelopes.add(1);
+        }
       }
-    }
-    const comment = event.comment || '';
-    if (comment.includes('ping')) {
-      pings++;
-    }
+      const comment = event.comment || '';
+      if (comment.includes('ping')) {
+        pings += 1;
+      }
+    });
   });
 
-  // Hold until the scenario duration ends (k6 closes the VU).
-  sleep(45);
+  check(response, { 'sse status 200': (r) => r && r.status === 200 });
 
   if (userIdx === 0) {
     check(null, {

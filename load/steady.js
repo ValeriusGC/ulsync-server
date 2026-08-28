@@ -28,7 +28,7 @@ if (!Number.isInteger(USERS) || USERS < 1) {
 }
 
 const tokens = new SharedArray('tokens', () => {
-  const list = JSON.parse(open('load/tokens.json'));
+  const list = JSON.parse(open('tokens.json'));
   if (list.length < 1000) {
     throw new Error(
       'load/tokens.json has fewer than 1000 tokens; rerun: go run ./load/gentokens -n 1000 -out load',

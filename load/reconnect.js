@@ -22,7 +22,7 @@ if (!Number.isInteger(USERS) || USERS < 1) {
 }
 
 const tokens = new SharedArray('tokens', () => {
-  const list = JSON.parse(open('load/tokens.json'));
+  const list = JSON.parse(open('tokens.json'));
   if (list.length < USERS) {
     throw new Error(`need at least ${USERS} tokens in load/tokens.json`);
   }
