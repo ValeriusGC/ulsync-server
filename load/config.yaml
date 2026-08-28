@@ -1,0 +1,30 @@
+# Load-test server configuration. ES256 only — symmetric HS256 would understate
+# verify cost and produce numbers that do not match production.
+# Database path is separate from the operator store so load runs do not mix data.
+server:
+  bind: "127.0.0.1:8080"
+  read_header_timeout: "5s"
+  idle_timeout: "120s"
+  max_body_bytes: 1048576
+storage:
+  driver: "sqlite"
+  path: "./data/ulsync-load.db"
+auth:
+  # Placeholder URL: if jwks_file is cleared by mistake, the process must not
+  # fetch a real external JWKS during a local load run.
+  jwks_url: "https://example.invalid/jwks.json"
+  jwks_file: "load/jwks.json"
+  jwks_cache_ttl: "10m"
+  allowed_algs: ["ES256"]
+  audience: []
+  issuer: ""
+  dev_hs256_secret: ""
+sync:
+  max_envelopes_per_push: 1
+  pull_limit_default: 100
+  pull_limit_max: 500
+  live_poll_timeout: "55s"
+  live_heartbeat: "15s"
+admin:
+  bind: "127.0.0.1:8081"
+  token: ""
