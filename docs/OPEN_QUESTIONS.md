@@ -1,8 +1,8 @@
 # Open questions
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-27 20:16:00 +0500  
-**Version:** 5  
+**Updated:** 2026-08-28 19:42:00 +0500  
+**Version:** 6  
 **Document type:** log
 
 Findings that fall outside the current step are recorded here instead of being fixed opportunistically. Each entry has three parts: what was found, where, and why it is not resolved in this change.
@@ -47,4 +47,4 @@ Entries are reviewed at the end of round 1 (step 17).
 
 **Where:** `GET /v1/sync/pull?live=sse` and `live=poll`; `internal/live` registry.
 
-**Why not here:** The cap depends on memory and the process file-descriptor limit. Step 08 load numbers decide whether a config field is needed. Adding a guess now would be a fake limit.
+**Resolution (step 08):** Measured **31.8 KiB/conn** at 1 000 established SSE and **25.7 KiB/conn** at 10 000 (`holdconns`, sequential points, same server process). Scaling is approximately linear between those points. **No `sync.max_live_connections` YAML cap** — memory is a hosting/provisioning limit, not a correctness defect at these numbers. Revisit if a host cannot raise `ulimit -n` enough for the target idle connection count.

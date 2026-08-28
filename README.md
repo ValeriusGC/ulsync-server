@@ -257,6 +257,15 @@ The database file for load runs is `./data/ulsync-load.db`, separate from the op
 
 k6 scenarios (`load/steady.js`, `load/live.js`, `load/reconnect.js`) model 1 000 product users with seven clients each. Per-connection memory is measured with `load/holdconns`, not k6.
 
+`live.js` requires a custom k6 binary with the community `xk6-sse` extension. Build it once:
+
+```bash
+go install go.k6.io/xk6/cmd/xk6@latest
+xk6 build --with github.com/phymbert/xk6-sse@37cc472 -o load/k6-sse
+```
+
+Use `./load/k6-sse run load/live.js` (stock k6 v2.2.0 auto-resolution for `k6/x/sse` failed on this machine).
+
 Full reproduction commands, measured numbers, and extrapolation to 10 000 users are in [docs/LOAD.md](docs/LOAD.md).
 
 ## Development
