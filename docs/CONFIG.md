@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-27 20:16:00 +0500  
-**Version:** 6  
+**Updated:** 2026-08-28 16:04:15 +0500  
+**Version:** 7  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -79,7 +79,15 @@ Round 1 fixes this value at `1` on purpose. The handler, tests, and operator doc
 
 ## Admin bind safety
 
-The server refuses to start when `admin.bind` listens on a non-loopback address (for example `0.0.0.0:8081`) while `admin.token` is empty. Without this check, the operations page could be exposed on the network by a configuration mistake long before step 07 adds the listener. Fix by binding to `127.0.0.1` or setting a non-empty `admin.token`.
+The server refuses to start when `admin.bind` listens on a non-loopback address (for example `0.0.0.0:8081`) while `admin.token` is empty. Without this check, the operations page could be exposed on the network by a configuration mistake. Fix by binding to `127.0.0.1` or setting a non-empty `admin.token`. **Do not expose the panel on a public interface without a non-empty `admin.token`.** The process enforces this at startup; there is no runtime override.
+
+The operations listener runs in the same process as sync (see `admin` bind above). It serves `GET /admin` (embedded HTML), `GET /admin/events` (SSE snapshot once per second), and `POST /admin/token-check` (user JWT validation with rejection reasons). The panel is read-only: it never writes configuration or database state.
+
+To reach the panel from another host while keeping loopback on the server, forward the port: `ssh -L 8081:127.0.0.1:8081 user@host`, then open `http://127.0.0.1:8081/admin` locally.
+
+When `admin.token` is non-empty, all three panel routes require `Authorization: Bearer <admin.token>`. When it is empty and the bind is loopback, no header is required.
+
+Browsers cannot send an `Authorization` header on `EventSource`. With a non-empty `admin.token`, use curl with `-H Authorization` for `/admin/events`; the in-browser stream will not authenticate. With an empty token on loopback (including through an SSH tunnel to `127.0.0.1`), the browser stream works without extra headers.
 
 ## Reverse proxies and buffering
 

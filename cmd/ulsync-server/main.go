@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ValeriusGC/ulsync-server/internal/admin"
 	"github.com/ValeriusGC/ulsync-server/internal/auth"
 	"github.com/ValeriusGC/ulsync-server/internal/config"
 	"github.com/ValeriusGC/ulsync-server/internal/httpapi"
@@ -72,34 +73,45 @@ func run() int {
 	}
 
 	startedAt := time.Now().UTC()
-	srv := httpapi.New(cfg, db, verifier, version, startedAt)
+	syncSrv := httpapi.New(cfg, db, verifier, version, startedAt)
+	adminSrv := admin.New(cfg, db, verifier, version, startedAt, syncSrv.Metrics(), syncSrv.Registry(), admin.Options{})
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Listen in a goroutine so the main goroutine can wait on signals or errors.
-	errCh := make(chan error, 1)
+	// Both listeners share one shutdown path so SIGTERM stops sync and admin together.
+	errCh := make(chan error, 2)
 	go func() {
 		logger.Info("server listening", "bind", cfg.Server.Bind)
-		errCh <- srv.ListenAndServe()
+		errCh <- syncSrv.ListenAndServe()
 	}()
+	go func() {
+		logger.Info("admin listening", "bind", cfg.Admin.Bind)
+		errCh <- adminSrv.ListenAndServe()
+	}()
+
+	shutdownBoth := func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := syncSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("sync graceful shutdown failed", "error", err)
+		}
+		if err := adminSrv.Shutdown(shutdownCtx); err != nil {
+			logger.Error("admin graceful shutdown failed", "error", err)
+		}
+		logger.Info("server stopped")
+	}
 
 	select {
 	case err := <-errCh:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Error("server stopped unexpectedly", "error", err)
+			logger.Error("listener stopped unexpectedly", "error", err)
+			shutdownBoth()
 			return 1
 		}
 	case <-ctx.Done():
 		logger.Info("shutdown signal received")
-		// Allow in-flight requests up to 10s; after that Shutdown returns anyway.
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			logger.Error("graceful shutdown failed", "error", err)
-			return 1
-		}
-		logger.Info("server stopped")
+		shutdownBoth()
 	}
 
 	return 0

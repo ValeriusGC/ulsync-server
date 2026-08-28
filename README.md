@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-27 20:16:00 +0500  
-**Version:** 6  
+**Updated:** 2026-08-28 16:04:15 +0500  
+**Version:** 7  
 **Document type:** readme
 
 Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
@@ -60,7 +60,7 @@ Configure either:
 - `auth.jwks_url` — the JSON Web Key Set (JWKS) URL (Supabase publishes one at `/auth/v1/.well-known/jwks.json`), or
 - `auth.jwks_file` — a static JWKS file, for hosts without outbound internet. When set, the URL is not fetched.
 
-`GET /v1/whoami` is the cheapest way to confirm a token is accepted. It stays in the API because operators use it when a client cannot sync, and the operations panel (step 07) will call it as a token check. It is not a debug leftover.
+`GET /v1/whoami` is the cheapest way to confirm a token is accepted. It stays in the API because operators use it when a client cannot sync. The operations panel checks user JWTs through `POST /admin/token-check` instead of calling whoami over HTTP. Whoami is not a debug leftover.
 
 ```bash
 curl -sS -H "Authorization: Bearer $TOKEN" localhost:8080/v1/whoami
@@ -191,6 +191,55 @@ Leave that curl running. In another terminal, push a fixture. An `envelope` even
 The bearer token is checked when the connection **opens**. The server does not close the stream when the token's `exp` elapses. Reopening with a fresh token is the client's job (the Dart package, step 13). Checking `exp` inside the loop would make sync go silent at token expiry with nothing in the log that looks like an error.
 
 Any other `live` value (including `SSE` or `Poll`) is `400` with body `{"error":"invalid parameter","param":"live"}`.
+
+## Operations page
+
+The process listens on a second address (`admin.bind`, default `127.0.0.1:8081`) for a read-only operations panel. Sync traffic stays on `server.bind`; firewall rules for sync do not automatically expose the panel.
+
+Open the panel on the local machine:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/admin
+```
+
+Expected: HTTP `200` with `Content-Type: text/html`.
+
+The default bind is loopback-only so the panel is not reachable from other hosts without an explicit tunnel or a non-loopback bind plus `admin.token`. To view the panel from another machine, forward the port over SSH:
+
+```bash
+ssh -L 8081:127.0.0.1:8081 user@host
+```
+
+Then open `http://127.0.0.1:8081/admin` in a browser on your laptop. The tunnel terminates on the server's loopback listener.
+
+The panel is read-only: it shows process metrics, storage counters, and a redacted copy of the configuration. It never edits YAML or database rows. `POST /admin/token-check` only validates a user JWT and reports the subject; it does not change server state.
+
+Two different secrets appear in operator workflows:
+
+- **`admin.token`** — a shared password from YAML that protects the panel routes (`/admin`, `/admin/events`, `/admin/token-check`) when set. It is **not** a JWT. Send it as `Authorization: Bearer <admin.token>` on curl requests when the field is non-empty.
+- **User JWT** — the same bearer token clients use on `/v1/*`. Paste it into the token-check form or POST it to `/admin/token-check` as JSON `{"token":"…"}`.
+
+Browsers cannot attach custom headers to `EventSource`, so the in-page snapshot stream works without `admin.token` only when the panel bind is loopback and `admin.token` is empty (including over an SSH tunnel to `127.0.0.1`). When `admin.token` is set, use curl with `-H Authorization` for `/admin/events`; the HTML stream will receive `401` without a header.
+
+Every value on the page (version, database path, counters, configuration) arrives from the SSE snapshot stream once per second. Nothing is baked into the HTML markup, so changing the configuration file and restarting changes the page without rebuilding the binary.
+
+Snapshot stream:
+
+```bash
+curl -N -sS http://127.0.0.1:8081/admin/events | head -c 400; echo
+```
+
+Expected: `Content-Type: text/event-stream` and a JSON `data:` frame containing `version`, `storage`, `config`, and `live_connections`.
+
+User token check (replace `$TOKEN` with a JWT your identity provider signed, or a development HS256 token minted with `auth.dev_hs256_secret`):
+
+```bash
+curl -sS -X POST http://127.0.0.1:8081/admin/token-check \
+  -H 'Content-Type: application/json' \
+  -d "{\"token\":\"$TOKEN\"}"; echo
+```
+
+Expected for a valid token: `{"valid":true,"subject":"<sub claim>"}`. Expected for garbage: `{"valid":false,"reason":"…"}` with a non-empty reason.
 
 ## Storage
 

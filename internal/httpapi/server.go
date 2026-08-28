@@ -18,6 +18,7 @@ import (
 	"github.com/ValeriusGC/ulsync-server/internal/auth"
 	"github.com/ValeriusGC/ulsync-server/internal/config"
 	"github.com/ValeriusGC/ulsync-server/internal/live"
+	"github.com/ValeriusGC/ulsync-server/internal/metrics"
 	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
@@ -35,6 +36,8 @@ type Server struct {
 	httpServer *http.Server
 	// registry is the single waiter set shared by push (Notify) and pull (Subscribe).
 	registry *live.Registry
+	// counters tracks /v1 request volume and latencies for the operations panel.
+	counters *metrics.Collector
 }
 
 // New constructs an HTTP server bound to cfg.Server.Bind.
@@ -42,7 +45,8 @@ type Server struct {
 // db supplies live storage statistics for /health. verifier authenticates
 // every /v1/* request. version and startedAt are echoed verbatim in the
 // health JSON (startedAt is formatted as RFC 3339 UTC). One waiter registry
-// is created here and shared by push (Notify) and pull (Subscribe).
+// and one metrics collector are created here and shared with the operations
+// panel (step 07).
 //
 // WriteTimeout is intentionally unset: a global write deadline would kill
 // long-lived SSE connections. Per-write deadlines use http.ResponseController.
@@ -51,6 +55,7 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 	mux.HandleFunc("GET /health", healthHandler(db, version, startedAt))
 
 	reg := live.New()
+	counters := metrics.New()
 
 	// All /v1/* routes share one auth wrapper and one POST body limit ancestor.
 	protected := http.NewServeMux()
@@ -64,12 +69,13 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 		cfg.Sync.LiveHeartbeat.Std(),
 		reg,
 	))
-	mux.Handle("/v1/", requireBearer(verifier, protected))
+	mux.Handle("/v1/", counters.Wrap(requireBearer(verifier, protected)))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)
 
 	return &Server{
 		registry: reg,
+		counters: counters,
 		httpServer: &http.Server{
 			Addr:              cfg.Server.Bind,
 			Handler:           handler,
@@ -97,9 +103,14 @@ func (s *Server) Handler() http.Handler {
 }
 
 // Registry returns the waiter registry this server uses for live pull.
-// Tests wait on Len; the operations panel (step 07) will read the same value.
+// Tests wait on Len; the operations panel reads the same value.
 func (s *Server) Registry() *live.Registry {
 	return s.registry
+}
+
+// Metrics returns the /v1 traffic collector shared with the operations panel.
+func (s *Server) Metrics() *metrics.Collector {
+	return s.counters
 }
 
 // storageHealth is the JSON object under the "storage" key in GET /health.

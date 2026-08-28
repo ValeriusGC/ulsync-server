@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>ulsync operations</title>
+  <style>
+    body { font-family: sans-serif; margin: 1.5rem; }
+    dd { margin: 0 0 0.75rem 0; }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>ulsync operations</h1>
+  <p>Read-only process view. Values arrive from the snapshot stream.</p>
+  <dl>
+    <dt>Version</dt><dd id="version">—</dd>
+    <dt>Started at</dt><dd id="started_at">—</dd>
+    <dt>Uptime (seconds)</dt><dd id="uptime_seconds">—</dd>
+    <dt>Database path</dt><dd id="storage_path">—</dd>
+    <dt>Database size (bytes)</dt><dd id="storage_size_bytes">—</dd>
+    <dt>Users</dt><dd id="storage_users">—</dd>
+    <dt>Envelopes</dt><dd id="storage_envelopes">—</dd>
+    <dt>In-flight requests</dt><dd id="in_flight">—</dd>
+    <dt>Total / 4xx / 5xx</dt><dd id="requests">—</dd>
+    <dt>Live connections</dt><dd id="live_connections">—</dd>
+    <dt>p95 (ms)</dt><dd id="p95_ms">—</dd>
+    <dt>Last error</dt><dd id="last_error">—</dd>
+  </dl>
+  <h2>Configuration (secrets redacted)</h2>
+  <pre id="config">—</pre>
+  <h2>Check a user token</h2>
+  <form id="token-check" action="#" onsubmit="return false;">
+    <input id="token-input" type="text" autocomplete="off" spellcheck="false">
+    <button type="submit">Check token</button>
+    <output id="token-result"></output>
+  </form>
+  <script>
+    const es = new EventSource('/admin/events');
+    es.onmessage = (ev) => {
+      const s = JSON.parse(ev.data);
+      document.getElementById('version').textContent = s.version;
+      document.getElementById('started_at').textContent = s.started_at;
+      document.getElementById('uptime_seconds').textContent = s.uptime_seconds;
+      document.getElementById('storage_path').textContent = s.storage.path;
+      document.getElementById('storage_size_bytes').textContent = s.storage.size_bytes;
+      document.getElementById('storage_users').textContent = s.storage.users;
+      document.getElementById('storage_envelopes').textContent = s.storage.envelopes;
+      document.getElementById('in_flight').textContent = s.requests.in_flight;
+      const total = s.requests.total;
+      const pct = (n) => total === 0 ? '0%' : ((100 * n / total).toFixed(1) + '%');
+      document.getElementById('requests').textContent =
+        total + ' / ' + s.requests.status_4xx + ' (' + pct(s.requests.status_4xx) + ') / ' +
+        s.requests.status_5xx + ' (' + pct(s.requests.status_5xx) + ')';
+      document.getElementById('live_connections').textContent = s.live_connections;
+      document.getElementById('p95_ms').textContent = s.p95_ms;
+      if (s.last_error) {
+        document.getElementById('last_error').textContent = s.last_error.text + ' at ' + s.last_error.at;
+      } else {
+        document.getElementById('last_error').textContent = '—';
+      }
+      document.getElementById('config').textContent = JSON.stringify(s.config, null, 2);
+    };
+    document.getElementById('token-check').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const token = document.getElementById('token-input').value;
+      const out = document.getElementById('token-result');
+      out.textContent = '…';
+      try {
+        const resp = await fetch('/admin/token-check', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({token}),
+        });
+        const body = await resp.json();
+        if (body.valid) {
+          out.textContent = 'valid: subject=' + body.subject;
+        } else {
+          out.textContent = 'invalid: ' + body.reason;
+        }
+      } catch (err) {
+        out.textContent = 'request failed';
+      }
+    });
+  </script>
+</body>
+</html>
