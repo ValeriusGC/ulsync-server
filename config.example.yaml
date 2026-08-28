@@ -36,7 +36,8 @@ sync:
   live_poll_timeout: "55s"
   live_heartbeat: "15s"
 
-# Operations panel (listener in step 07). Bind must stay on loopback unless token is set.
+# Operations panel. The listener is served in this process on admin.bind.
+# Bind must stay on loopback unless admin.token is set.
 admin:
   bind: "127.0.0.1:8081"
   token: ""
