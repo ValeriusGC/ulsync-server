@@ -129,6 +129,13 @@ func (s *Store) Close() error {
 	return firstErr
 }
 
+// SetReadMaxOpenConns caps the reader pool. Open already sets this to
+// runtime.NumCPU(). Tests set 1 to prove a waiting live pull does not
+// hold a reader connection.
+func (s *Store) SetReadMaxOpenConns(n int) {
+	s.readDB.SetMaxOpenConns(n)
+}
+
 // AllocateSeq reserves the next per-user server_seq value in a single
 // round trip. The user row is created on first use; there is no separate
 // "create user" step.

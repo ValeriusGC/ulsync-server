@@ -192,6 +192,29 @@ func TestPullRejectsUnknownLive(t *testing.T) {
 	}
 }
 
+func TestLivePollDoesNotHoldReaderConn(t *testing.T) {
+	t.Parallel()
+
+	env := newHTTPEnv(t, nil)
+	env.db.SetReadMaxOpenConns(1)
+	token := signHTTPToken(t, jwt.SigningMethodES256, env.ecPriv, env.ecKid, httpClaims("alice"))
+
+	pollCtx, pollCancel := context.WithCancel(context.Background())
+	defer pollCancel()
+	go func() {
+		env.pullCtx(t, pollCtx, token, "since=0&live=poll")
+	}()
+	waitLiveLen(t, env.srv, 1, 2*time.Second)
+
+	pullCtx, pullCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer pullCancel()
+	rec := env.pullCtx(t, pullCtx, token, "since=0")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body = %q (waiting poll held the reader pool)", rec.Code, rec.Body.String())
+	}
+	pollCancel()
+}
+
 // waitLiveLen polls Registry().Len until it equals want or timeout.
 func waitLiveLen(t *testing.T, srv *Server, want int, timeout time.Duration) {
 	t.Helper()
