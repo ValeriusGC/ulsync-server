@@ -3,7 +3,7 @@
 // GET /health stays public for process supervisors. Every /v1/* route requires
 // a bearer token. POST /v1/sync/push accepts one envelope under last-write-wins.
 // GET /v1/sync/pull returns that user's envelopes after a cursor. live=poll
-// holds the request until a row appears or the configured timeout elapses.
+// holds the request until a row appears; live=sse streams events with a heartbeat.
 // POST body size is capped at the root handler so future routes inherit the limit
 // without per-route wiring.
 package httpapi

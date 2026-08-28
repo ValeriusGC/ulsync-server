@@ -84,8 +84,8 @@ func parseNonNegativeQueryInt(raw string) (value int64, missing, ok bool) {
 //
 // live is case-sensitive. Omitted or empty: immediate JSON (step 05).
 // live=poll holds the request until a row appears or pollTimeout elapses.
-// heartbeat is accepted so the signature stays stable when SSE is added;
-// it is unused in the poll path. Any other live value is 400.
+// live=sse streams envelope and cursor events, then waits with a heartbeat.
+// Any other live value is 400.
 func pullHandler(db *store.Store, defaultLimit, maxLimit int, pollTimeout, heartbeat time.Duration, reg *live.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
@@ -128,7 +128,7 @@ func pullHandler(db *store.Store, defaultLimit, maxLimit int, pollTimeout, heart
 
 		liveMode := q.Get("live")
 		switch liveMode {
-		case "", "poll":
+		case "", "poll", "sse":
 		default:
 			writePushError(w, http.StatusBadRequest, map[string]string{
 				"error": "invalid parameter",
@@ -150,12 +150,17 @@ func pullHandler(db *store.Store, defaultLimit, maxLimit int, pollTimeout, heart
 
 		// Subscribe before querying. A push that lands between an empty Since
 		// and registration would notify nobody, and the client would hang until
-		// pollTimeout. Capacity 1 on the waiter channel still delivers a Notify
-		// that arrives before this handler reaches select.
+		// pollTimeout or the next heartbeat. Capacity 1 on the waiter channel
+		// still delivers a Notify that arrives before this handler reaches select.
 		waiter := reg.Subscribe(userID)
 		defer reg.Unsubscribe(waiter)
 
-		serveLivePoll(w, r, db, userID, since, limit, pollTimeout, waiter)
+		switch liveMode {
+		case "poll":
+			serveLivePoll(w, r, db, userID, since, limit, pollTimeout, waiter)
+		case "sse":
+			serveLiveSSE(w, r, db, userID, since, limit, heartbeat, waiter)
+		}
 	}
 }
 
