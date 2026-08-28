@@ -247,7 +247,10 @@ func (s *Server) writeSnapshotFrame(w http.ResponseWriter, snap Snapshot) error 
 
 // assembleSnapshot builds a snapshot immediately for tests without SSE.
 func (s *Server) assembleSnapshot(ctx context.Context) Snapshot {
-	state := &snapshotState{}
+	state := s.snap
+	if state == nil {
+		state = &snapshotState{}
+	}
 	s.refreshStats(ctx, state)
 	s.buildSnapshot(state)
 	state.mu.RLock()
