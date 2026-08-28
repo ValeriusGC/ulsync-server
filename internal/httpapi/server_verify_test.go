@@ -286,6 +286,11 @@ func newHTTPEnvWith(t *testing.T, tweakAuth func(*config.Auth), tweakCfg func(*c
 			MaxEnvelopesPerPush: 1,
 			PullLimitDefault:    100,
 			PullLimitMax:        500,
+			// newHTTPEnvWith builds Config by hand, bypassing config.Load.
+			// Zero durations would make live=poll return immediately
+			// (time.NewTimer(0)) and live=sse panic (time.NewTicker(0)).
+			LivePollTimeout: config.Duration(55 * time.Second),
+			LiveHeartbeat:   config.Duration(15 * time.Second),
 		},
 	}
 	if tweakCfg != nil {
@@ -306,7 +311,14 @@ func newHTTPEnvWith(t *testing.T, tweakAuth func(*config.Auth), tweakCfg func(*c
 // An empty token omits Authorization so the 401 path can be exercised.
 func (e *httpEnv) pull(t *testing.T, token, rawQuery string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/v1/sync/pull?"+rawQuery, nil)
+	return e.pullCtx(t, context.Background(), token, rawQuery)
+}
+
+// pullCtx is pull with a caller-supplied context so live tests can cancel a
+// waiting request and ordinary pull can run under a short deadline.
+func (e *httpEnv) pullCtx(t *testing.T, ctx context.Context, token, rawQuery string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/pull?"+rawQuery, nil).WithContext(ctx)
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

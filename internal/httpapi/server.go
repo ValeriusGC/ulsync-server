@@ -2,7 +2,8 @@
 //
 // GET /health stays public for process supervisors. Every /v1/* route requires
 // a bearer token. POST /v1/sync/push accepts one envelope under last-write-wins.
-// GET /v1/sync/pull returns that user's envelopes after a cursor.
+// GET /v1/sync/pull returns that user's envelopes after a cursor. live=poll
+// holds the request until a row appears or the configured timeout elapses.
 // POST body size is capped at the root handler so future routes inherit the limit
 // without per-route wiring.
 package httpapi
@@ -16,6 +17,7 @@ import (
 
 	"github.com/ValeriusGC/ulsync-server/internal/auth"
 	"github.com/ValeriusGC/ulsync-server/internal/config"
+	"github.com/ValeriusGC/ulsync-server/internal/live"
 	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
@@ -31,6 +33,8 @@ type userIDKey struct{}
 // Server wraps net/http.Server with the route table for this process.
 type Server struct {
 	httpServer *http.Server
+	// registry is the single waiter set shared by push (Notify) and pull (Subscribe).
+	registry *live.Registry
 }
 
 // New constructs an HTTP server bound to cfg.Server.Bind.
@@ -39,22 +43,32 @@ type Server struct {
 // every /v1/* request. version and startedAt are echoed verbatim in the
 // health JSON (startedAt is formatted as RFC 3339 UTC).
 //
-// WriteTimeout is intentionally unset: long-lived SSE connections arrive in
-// step 06. Per-handler write deadlines will use http.ResponseController instead.
+// WriteTimeout is intentionally unset: a global write deadline would kill
+// long-lived SSE connections. Per-write deadlines use http.ResponseController.
 func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version string, startedAt time.Time) *Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", healthHandler(db, version, startedAt))
+
+	reg := live.New()
 
 	// All /v1/* routes share one auth wrapper and one POST body limit ancestor.
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /v1/whoami", whoami)
 	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush))
-	protected.HandleFunc("GET /v1/sync/pull", pullHandler(db, cfg.Sync.PullLimitDefault, cfg.Sync.PullLimitMax))
+	protected.HandleFunc("GET /v1/sync/pull", pullHandler(
+		db,
+		cfg.Sync.PullLimitDefault,
+		cfg.Sync.PullLimitMax,
+		cfg.Sync.LivePollTimeout.Std(),
+		cfg.Sync.LiveHeartbeat.Std(),
+		reg,
+	))
 	mux.Handle("/v1/", requireBearer(verifier, protected))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)
 
 	return &Server{
+		registry: reg,
 		httpServer: &http.Server{
 			Addr:              cfg.Server.Bind,
 			Handler:           handler,
@@ -79,6 +93,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // Handler returns the root http.Handler, primarily for httptest in unit tests.
 func (s *Server) Handler() http.Handler {
 	return s.httpServer.Handler
+}
+
+// Registry returns the waiter registry this server uses for live pull.
+// Tests wait on Len; the operations panel (step 07) will read the same value.
+func (s *Server) Registry() *live.Registry {
+	return s.registry
 }
 
 // storageHealth is the JSON object under the "storage" key in GET /health.
