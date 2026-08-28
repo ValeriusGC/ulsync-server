@@ -1,8 +1,8 @@
 # Open questions
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-27 13:46:10 +0500  
-**Version:** 4  
+**Updated:** 2026-08-27 20:16:00 +0500  
+**Version:** 5  
 **Document type:** log
 
 Findings that fall outside the current step are recorded here instead of being fixed opportunistically. Each entry has three parts: what was found, where, and why it is not resolved in this change.
@@ -40,3 +40,11 @@ Entries are reviewed at the end of round 1 (step 17).
 **Where:** `protocol/SPEC.md` pull limits; `GET /v1/sync/pull` query parsing.
 
 **Why not here:** The protocol lives in ulsync-protocol. A dedicated SPEC PR should say that a limit above the maximum is truncated, not rejected. This server step does not edit the submodule.
+
+## No cap on live pull connections
+
+**Found:** Live pull holds an HTTP connection per waiting device. There is no configuration field that limits how many waiters the process accepts.
+
+**Where:** `GET /v1/sync/pull?live=sse` and `live=poll`; `internal/live` registry.
+
+**Why not here:** The cap depends on memory and the process file-descriptor limit. Step 08 load numbers decide whether a config field is needed. Adding a guess now would be a fake limit.

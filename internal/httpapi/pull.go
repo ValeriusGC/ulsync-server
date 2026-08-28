@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/ValeriusGC/ulsync-server/internal/live"
 	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
@@ -78,10 +80,13 @@ func parseNonNegativeQueryInt(raw string) (value int64, missing, ok bool) {
 
 // pullHandler serves GET /v1/sync/pull for the authenticated user. defaultLimit
 // and maxLimit come from sync.pull_limit_default and sync.pull_limit_max.
-// A limit above maxLimit is truncated, not rejected. Unknown query parameters,
-// including live, are ignored so step 06 can add live mode without changing this
-// handler's parameter parsing.
-func pullHandler(db *store.Store, defaultLimit, maxLimit int) http.HandlerFunc {
+// A limit above maxLimit is truncated, not rejected.
+//
+// live is case-sensitive. Omitted or empty: immediate JSON (step 05).
+// live=poll holds the request until a row appears or pollTimeout elapses.
+// live=sse streams envelope and cursor events, then waits with a heartbeat.
+// Any other live value is 400.
+func pullHandler(db *store.Store, defaultLimit, maxLimit int, pollTimeout, heartbeat time.Duration, reg *live.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 
@@ -121,33 +126,103 @@ func pullHandler(db *store.Store, defaultLimit, maxLimit int) http.HandlerFunc {
 			limit = maxLimit
 		}
 
+		liveMode := q.Get("live")
+		switch liveMode {
+		case "", "poll", "sse":
+		default:
+			writePushError(w, http.StatusBadRequest, map[string]string{
+				"error": "invalid parameter",
+				"param": "live",
+			})
+			return
+		}
+
 		userID := UserID(r.Context())
+		if liveMode == "" {
+			rows, cursor, err := db.Since(r.Context(), userID, since, limit)
+			if err != nil {
+				http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			writePullJSON(w, rows, cursor)
+			return
+		}
+
+		// Subscribe before querying. A push that lands between an empty Since
+		// and registration would notify nobody, and the client would hang until
+		// pollTimeout or the next heartbeat. Capacity 1 on the waiter channel
+		// still delivers a Notify that arrives before this handler reaches select.
+		waiter := reg.Subscribe(userID)
+		defer reg.Unsubscribe(waiter)
+
+		switch liveMode {
+		case "poll":
+			serveLivePoll(w, r, db, userID, since, limit, pollTimeout, waiter)
+		case "sse":
+			serveLiveSSE(w, r, db, userID, since, limit, heartbeat, waiter)
+		}
+	}
+}
+
+// toPullEnvelope maps a stored row onto the pull wire type, including server_seq.
+func toPullEnvelope(env store.Envelope) pullEnvelope {
+	return pullEnvelope{
+		ID:              env.ID,
+		Part:            env.Part,
+		EntityType:      env.EntityType,
+		CreatedAtMS:     env.CreatedAtMS,
+		LastEditedAtMS:  env.LastEditedAtMS,
+		Revision:        env.Revision,
+		SourceID:        env.SourceID,
+		Flags:           env.Flags,
+		SchemaVersion:   env.SchemaVersion,
+		PayloadEncoding: env.PayloadEncoding,
+		Payload:         env.Payload,
+		ServerSeq:       env.ServerSeq,
+	}
+}
+
+// writePullJSON writes a 200 pull page. The envelopes slice is allocated empty
+// (never nil) so JSON encodes [] rather than null.
+func writePullJSON(w http.ResponseWriter, rows []store.Envelope, cursor int64) {
+	out := make([]pullEnvelope, 0, len(rows))
+	for _, env := range rows {
+		out = append(out, toPullEnvelope(env))
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(pullResponse{Envelopes: out, NextCursor: cursor})
+}
+
+// serveLivePoll answers live=poll. A non-empty first page is returned at once.
+// An empty page waits on the waiter channel, pollTimeout, or client disconnect.
+// There is no second wait: a wakeup runs Since once and returns, even if empty.
+// The wait sits on the channel only; Store.Since releases its reader connection
+// before returning, so the pool stays free while this request blocks.
+func serveLivePoll(w http.ResponseWriter, r *http.Request, db *store.Store, userID string, since int64, limit int, pollTimeout time.Duration, waiter *live.Waiter) {
+	rows, cursor, err := db.Since(r.Context(), userID, since, limit)
+	if err != nil {
+		http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	if len(rows) > 0 {
+		writePullJSON(w, rows, cursor)
+		return
+	}
+
+	timer := time.NewTimer(pollTimeout)
+	defer timer.Stop()
+	select {
+	case <-r.Context().Done():
+		return
+	case <-timer.C:
+		writePullJSON(w, nil, since)
+	case <-waiter.C():
 		rows, cursor, err := db.Since(r.Context(), userID, since, limit)
 		if err != nil {
 			http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
 			return
 		}
-
-		out := make([]pullEnvelope, 0, len(rows))
-		for _, env := range rows {
-			out = append(out, pullEnvelope{
-				ID:              env.ID,
-				Part:            env.Part,
-				EntityType:      env.EntityType,
-				CreatedAtMS:     env.CreatedAtMS,
-				LastEditedAtMS:  env.LastEditedAtMS,
-				Revision:        env.Revision,
-				SourceID:        env.SourceID,
-				Flags:           env.Flags,
-				SchemaVersion:   env.SchemaVersion,
-				PayloadEncoding: env.PayloadEncoding,
-				Payload:         env.Payload,
-				ServerSeq:       env.ServerSeq,
-			})
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(pullResponse{Envelopes: out, NextCursor: cursor})
+		writePullJSON(w, rows, cursor)
 	}
 }

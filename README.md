@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-27 13:46:10 +0500  
-**Version:** 5  
+**Updated:** 2026-08-27 20:16:00 +0500  
+**Version:** 6  
 **Document type:** readme
 
 Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
@@ -146,7 +146,51 @@ Expected empty page (`next_cursor` equals the submitted `since`, not zero):
 {"envelopes":[],"next_cursor":2}
 ```
 
-Omit `limit` to use `sync.pull_limit_default` (100). A `limit` above `sync.pull_limit_max` is truncated to that cap and still returns `200`. Unknown query parameters are ignored.
+Omit `limit` to use `sync.pull_limit_default` (100). A `limit` above `sync.pull_limit_max` is truncated to that cap and still returns `200`. Unknown query parameters other than `live` are ignored. `live` selects immediate, long-poll, or SSE delivery; see [Live updates](#live-updates).
+
+## Live updates
+
+Device B learns that device A wrote a row without polling on a timer and without a refresh button. It holds `GET /v1/sync/pull` open; the server writes into that request when **this** `user_id` gets a new row. The URL is the same as Pull; only the `live` query parameter changes the delivery.
+
+The server does not issue tokens. `$TOKEN` is the same bearer string as in [Pull](#pull).
+
+### Immediate (no `live`)
+
+Omit `live`, or pass an empty value. The handler answers at once, possibly with an empty page. Catch-up is the same loop as [Pull](#pull): substitute the returned `next_cursor` until a page is empty.
+
+```bash
+curl -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=0&limit=10'
+```
+
+### Long poll (`live=poll`)
+
+If the page after `since` is empty, the server holds the request until a write for this user commits or `sync.live_poll_timeout` elapses (55 seconds by default, under the common 60-second proxy idle limit). The JSON shape is the same as an immediate pull.
+
+Two terminals. In the first, wait on a cursor that has no rows yet:
+
+```bash
+time curl -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=999&live=poll'
+```
+
+In the second, push a fixture as in [Push](#push). The first curl must return in a fraction of a second after the push, not after 55 seconds, with the new envelope in `envelopes`.
+
+If nothing is pushed, the first curl still returns HTTP `200` after about 55 seconds: `"envelopes":[]` and `next_cursor` equal to the submitted `since` (here 999). The wait comes from `sync.live_poll_timeout` in the configuration file, not from a constant in the binary.
+
+### Server-Sent Events (`live=sse`)
+
+Use `curl -N`. Without `-N`, curl buffers the stream itself and it looks as if "nothing arrives" — that is curl, not the server.
+
+```bash
+curl -N -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=0&live=sse'
+```
+
+The response headers are `Content-Type: text/event-stream`, `Cache-Control: no-cache`, and `X-Accel-Buffering: no` (so Nginx does not accumulate the stream and dump it at the end). The body starts with whatever already exists after `since`: one `event: envelope` per row, then `event: cursor`. While the connection is silent, the server writes the SSE comment `: ping` every `sync.live_heartbeat` (15 seconds by default) so a mobile carrier NAT does not drop the TCP session.
+
+Leave that curl running. In another terminal, push a fixture. An `envelope` event and a `cursor` event must appear in the first terminal within milliseconds, not after the next ping.
+
+The bearer token is checked when the connection **opens**. The server does not close the stream when the token's `exp` elapses. Reopening with a fresh token is the client's job (the Dart package, step 13). Checking `exp` inside the loop would make sync go silent at token expiry with nothing in the log that looks like an error.
+
+Any other `live` value (including `SSE` or `Poll`) is `400` with body `{"error":"invalid parameter","param":"live"}`.
 
 ## Storage
 
