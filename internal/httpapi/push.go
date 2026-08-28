@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/ValeriusGC/ulsync-server/internal/live"
 	"github.com/ValeriusGC/ulsync-server/internal/store"
 )
 
@@ -84,7 +85,10 @@ type pushResult struct {
 //
 // Validation rejects malformed wire fields before storage. Storage errors yield
 // 503; a losing envelope yields applied:false with 200, never 409.
-func pushHandler(db *store.Store, maxEnvelopes int) http.HandlerFunc {
+//
+// After a successful Upsert with applied true, the waiter registry is notified
+// so live pull clients for this user wake and re-query storage.
+func pushHandler(db *store.Store, maxEnvelopes int, reg *live.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req pushRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -129,6 +133,13 @@ func pushHandler(db *store.Store, maxEnvelopes int) http.HandlerFunc {
 			if err != nil {
 				http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
 				return
+			}
+			// Notify after Upsert returns: the write transaction has already
+			// committed inside Upsert. Waking a reader earlier would let it
+			// query before the row is visible, then sleep until the deadline.
+			// applied:false means nothing changed, so nobody is woken.
+			if applied {
+				reg.Notify(UserID(r.Context()))
 			}
 			results = append(results, pushResult{
 				ID:      env.ID,

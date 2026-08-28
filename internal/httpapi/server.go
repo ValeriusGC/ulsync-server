@@ -41,7 +41,8 @@ type Server struct {
 //
 // db supplies live storage statistics for /health. verifier authenticates
 // every /v1/* request. version and startedAt are echoed verbatim in the
-// health JSON (startedAt is formatted as RFC 3339 UTC).
+// health JSON (startedAt is formatted as RFC 3339 UTC). One waiter registry
+// is created here and shared by push (Notify) and pull (Subscribe).
 //
 // WriteTimeout is intentionally unset: a global write deadline would kill
 // long-lived SSE connections. Per-write deadlines use http.ResponseController.
@@ -54,7 +55,7 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 	// All /v1/* routes share one auth wrapper and one POST body limit ancestor.
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /v1/whoami", whoami)
-	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush))
+	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush, reg))
 	protected.HandleFunc("GET /v1/sync/pull", pullHandler(
 		db,
 		cfg.Sync.PullLimitDefault,
