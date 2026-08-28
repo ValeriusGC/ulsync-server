@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-28 16:04:15 +0500  
-**Version:** 7  
+**Updated:** 2026-08-28 18:50:00 +0500  
+**Version:** 8  
 **Document type:** readme
 
 Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
@@ -248,6 +248,16 @@ The server uses a single SQLite database file configured by `storage.path`. One 
 ## Configuration
 
 See [docs/CONFIG.md](docs/CONFIG.md) and `config.example.yaml`. All bind addresses, paths, and timeouts are read from the configuration file.
+
+## Load testing
+
+Load runs use `load/config.yaml` and ES256 bearer tokens from `go run ./load/gentokens -n 1000 -out load`. They do **not** use the operator `config.yaml` HS256 development loop or `dev_hs256_secret`.
+
+The database file for load runs is `./data/ulsync-load.db`, separate from the operator store. Generated `load/jwks.json` and `load/tokens.json` are gitignored.
+
+k6 scenarios (`load/steady.js`, `load/live.js`, `load/reconnect.js`) model 1 000 product users with seven clients each. Per-connection memory is measured with `load/holdconns`, not k6.
+
+Full reproduction commands, measured numbers, and extrapolation to 10 000 users are in [docs/LOAD.md](docs/LOAD.md).
 
 ## Development
 

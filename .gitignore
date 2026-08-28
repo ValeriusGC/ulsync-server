@@ -4,3 +4,6 @@ config.yaml
 *.db
 *.db-wal
 *.db-shm
+load/jwks.json
+load/tokens.json
+load/server.log
