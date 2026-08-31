@@ -1,0 +1,11 @@
+.git
+/data
+*.db
+*.db-wal
+*.db-shm
+/config.yaml
+/ulsync-server
+load/jwks.json
+load/tokens.json
+load/server.log
+load/k6-sse
