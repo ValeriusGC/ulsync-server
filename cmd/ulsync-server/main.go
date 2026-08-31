@@ -43,11 +43,15 @@ func main() {
 func run() int {
 	configPath := flag.String("config", "./config.yaml", "path to the YAML configuration file")
 	showVersion := flag.Bool("version", false, "print version and exit")
+	doHealthcheck := flag.Bool("healthcheck", false, "GET http://127.0.0.1:8080/health and exit 0 only on HTTP 200")
 	flag.Parse()
 
 	if *showVersion {
 		fmt.Println(version)
 		return 0
+	}
+	if *doHealthcheck {
+		return probeHealth(healthClient(), healthcheckURL)
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
