@@ -69,9 +69,9 @@ Expected shape (values vary except the database path):
 
 The `storage.path` field must be `"/data/ulsync.db"`. No authentication is required on `/health`.
 
-Image size: not measured yet — run scenario **C** in `TEMP_09_server_docker.md` after `docker build` and paste the `docker images` output here before merge.
+Image size: 13.1MB.
 
-Architecture: not measured yet — run `docker image inspect ulsync-server:test --format '{{.Architecture}}'` after build and paste here before merge.
+Architecture: arm64.
 
 The runtime image is `gcr.io/distroless/static-debian12` because the binary is static Go (`CGO_ENABLED=0`): there is no shell and no curl, so container health uses the `-healthcheck` program flag instead of a probe binary.
 
