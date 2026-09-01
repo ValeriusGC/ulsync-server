@@ -37,7 +37,9 @@ sync:
   live_heartbeat: "15s"
 
 # Operations panel. The listener is served in this process on admin.bind.
-# Bind must stay on loopback unless admin.token is set.
+# Bare metal: bind must stay on loopback unless admin.token is set.
+# Inside Docker: use bind "0.0.0.0:8081" and a non-empty admin.token; publish
+# 127.0.0.1:8081:8081 on the host so the panel stays off the LAN (see README).
 admin:
   bind: "127.0.0.1:8081"
   token: ""

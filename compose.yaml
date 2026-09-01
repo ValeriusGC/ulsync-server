@@ -1,0 +1,19 @@
+# Secrets live in config.yaml on the host (gitignored). Admin is published on
+# host loopback only so the panel is not reachable from the LAN.
+services:
+  ulsync-server:
+    build:
+      context: .
+      args:
+        VERSION: ${VERSION:-dev}
+    image: ulsync-server:local
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ulsync-data:/data
+      - ./config.yaml:/etc/ulsync/config.yaml:ro
+
+volumes:
+  ulsync-data:

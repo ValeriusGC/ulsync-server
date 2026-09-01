@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-28 18:50:00 +0500  
-**Version:** 8  
+**Updated:** 2026-08-31 21:31:37 +0500  
+**Version:** 9  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -10,6 +10,8 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-08-31
 
 ### Added
 
@@ -21,3 +23,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Live pull: `live=poll` holds the request until a change or `sync.live_poll_timeout`; `live=sse` streams `envelope` and `cursor` events with a `: ping` heartbeat.
 - Operations page on `admin.bind`: embedded read-only UI, live SSE snapshot, `POST /admin/token-check`, and secret redaction on the configuration type.
 - k6 load scenarios (steady batch, live wakeups, thundering herd), ES256 token generator, connection holder, and `docs/LOAD.md` with measured capacity numbers.
+- Multi-stage Docker image (`gcr.io/distroless/static-debian12`, non-root UID 65532), `compose.yaml` with named volume and host loopback admin publish, `-healthcheck` flag for distroless `HEALTHCHECK`, CI image build on every pull request, and five-minute installation README.

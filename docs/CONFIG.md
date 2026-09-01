@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-28 16:04:15 +0500  
-**Version:** 7  
+**Updated:** 2026-08-31 21:31:37 +0500  
+**Version:** 8  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -81,6 +81,8 @@ Round 1 fixes this value at `1` on purpose. The handler, tests, and operator doc
 
 The server refuses to start when `admin.bind` listens on a non-loopback address (for example `0.0.0.0:8081`) while `admin.token` is empty. Without this check, the operations page could be exposed on the network by a configuration mistake. Fix by binding to `127.0.0.1` or setting a non-empty `admin.token`. **Do not expose the panel on a public interface without a non-empty `admin.token`.** The process enforces this at startup; there is no runtime override.
 
+In Docker, published ports reach the container's `eth0`, not container loopback. Binding `admin` to `127.0.0.1:8081` inside the container makes the panel unreachable through `ports:` mapping. Use `admin.bind: "0.0.0.0:8081"` with a non-empty `admin.token`, and keep the host publish as `127.0.0.1:8081:8081` in `compose.yaml` (see README).
+
 The operations listener runs in the same process as sync (see `admin` bind above). It serves `GET /admin` (embedded HTML), `GET /admin/events` (SSE snapshot once per second), and `POST /admin/token-check` (user JWT validation with rejection reasons). The panel is read-only: it never writes configuration or database state.
 
 To reach the panel from another host while keeping loopback on the server, forward the port: `ssh -L 8081:127.0.0.1:8081 user@host`, then open `http://127.0.0.1:8081/admin` locally.
@@ -93,11 +95,11 @@ Browsers cannot send an `Authorization` header on `EventSource`. With a non-empt
 
 Nginx buffers proxy responses by default. For `live=sse` that means events sit in the proxy until the buffer fills or the connection closes, then arrive as one chunk — the live feed is no longer live. `proxy_read_timeout` must also exceed `sync.live_poll_timeout` (55s), otherwise Nginx closes a quiet long-poll before the server answers.
 
-This fragment is canonical for the repository. Step 09 compose files must include these directives, not a paraphrase:
+This fragment belongs on the host Nginx in front of the published sync port. Round 1 `compose.yaml` does not run a reverse-proxy sidecar.
 
 ```nginx
 # Canonical Nginx fragment for ulsync live pull (SSE and long-poll).
-# Step 09 compose files must include these directives, not a paraphrase.
+# Host Nginx in front of the published sync port — not inside the app container.
 location /v1/ {
     proxy_pass http://127.0.0.1:8080;
     proxy_http_version 1.1;

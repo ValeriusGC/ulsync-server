@@ -1,8 +1,8 @@
 # Open questions
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-28 19:42:00 +0500  
-**Version:** 6  
+**Updated:** 2026-08-31 21:31:37 +0500  
+**Version:** 7  
 **Document type:** log
 
 Findings that fall outside the current step are recorded here instead of being fixed opportunistically. Each entry has three parts: what was found, where, and why it is not resolved in this change.
@@ -48,3 +48,11 @@ Entries are reviewed at the end of round 1 (step 17).
 **Where:** `GET /v1/sync/pull?live=sse` and `live=poll`; `internal/live` registry.
 
 **Resolution (step 08):** Measured **31.8 KiB/conn** at 1 000 established SSE and **25.7 KiB/conn** at 10 000 (`holdconns`, sequential points, same server process). Scaling is approximately linear between those points. **No `sync.max_live_connections` YAML cap** — memory is a hosting/provisioning limit, not a correctness defect at these numbers. Revisit if a host cannot raise `ulimit -n` enough for the target idle connection count.
+
+## Docker image size not recorded during step 09 execute
+
+**Found:** README still says image size and architecture are "not measured yet"; acceptance requires values from `docker images` / `docker image inspect`.
+
+**Where:** step 09 execute environment; `docker` binary not installed on the build host.
+
+**Why not here:** Run scenario **C** in `TEMP_09_server_docker.md`, paste Size and Architecture into README **Install in five minutes**, then amend commit 6 or add a follow-up commit before merge.
