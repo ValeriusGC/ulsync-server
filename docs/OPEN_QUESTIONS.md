@@ -1,8 +1,8 @@
 # Open questions
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-31 21:31:37 +0500  
-**Version:** 7  
+**Updated:** 2026-09-11 09:59:46 +0300  
+**Version:** 8  
 **Document type:** log
 
 Findings that fall outside the current step are recorded here instead of being fixed opportunistically. Each entry has three parts: what was found, where, and why it is not resolved in this change.
@@ -15,7 +15,7 @@ Entries are reviewed at the end of round 1 (step 17).
 
 **Where:** `protocol/SPEC.md` health section; `internal/httpapi/server.go` GET `/health`.
 
-**Why not here:** ulsync-protocol is a separate repository; SPEC update is a follow-up PR after step 02 merges, before any client parses `/health`.
+**Why not here:** ulsync-protocol is a separate repository; SPEC update is a follow-up PR after step 02 merges, before any client parses `/health`. Tracked in `ulsync-protocol` `docs/OPEN_QUESTIONS.md`. This repository does not edit SPEC.
 
 ## `auth.jwks_file` is not in triad-plan §13.2
 
@@ -23,7 +23,7 @@ Entries are reviewed at the end of round 1 (step 17).
 
 **Where:** `config.example.yaml` `auth.jwks_file`; triad plan §13.2.
 
-**Why not here:** The field is additive and does not change any existing key. Patching the triad plan is not this PR.
+**Why not here:** The field is additive and does not change any existing key. Patching the triad plan is not this PR. Headquarters item (`ROUND_1_TRIAD_PLAN.md` §13.2), not a protocol SPEC debt. Left open.
 
 ## `/v1/whoami` is not in the protocol SPEC
 
@@ -31,7 +31,7 @@ Entries are reviewed at the end of round 1 (step 17).
 
 **Where:** `protocol/SPEC.md` operations section; this repository `GET /v1/whoami`.
 
-**Why not here:** Editing the protocol submodule is a different repository. Same follow-up as the `/health` storage object: a dedicated `ulsync-protocol` PR.
+**Why not here:** Editing the protocol submodule is a different repository. Same follow-up as the `/health` storage object: a dedicated `ulsync-protocol` PR. Tracked in `ulsync-protocol` `docs/OPEN_QUESTIONS.md`. This repository does not edit SPEC.
 
 ## Pull `limit` above the configured maximum
 
@@ -39,7 +39,7 @@ Entries are reviewed at the end of round 1 (step 17).
 
 **Where:** `protocol/SPEC.md` pull limits; `GET /v1/sync/pull` query parsing.
 
-**Why not here:** The protocol lives in ulsync-protocol. A dedicated SPEC PR should say that a limit above the maximum is truncated, not rejected. This server step does not edit the submodule.
+**Why not here:** The protocol lives in ulsync-protocol. A dedicated SPEC PR should say that a limit above the maximum is truncated, not rejected. This server step does not edit the submodule. Tracked in `ulsync-protocol` `docs/OPEN_QUESTIONS.md`.
 
 ## No cap on live pull connections
 
@@ -55,4 +55,12 @@ Entries are reviewed at the end of round 1 (step 17).
 
 **Where:** step 09 execute environment; `docker` binary not installed on the build host.
 
-**Why not here:** Run scenario **C** in `TEMP_09_server_docker.md`, paste Size and Architecture into README **Install in five minutes**, then amend commit 6 or add a follow-up commit before merge.
+**Resolution (step 17):** README **Install in five minutes** already records `Image size: 13.1MB` and `Architecture: arm64`. Closed from this log. Step 17 did not re-run `docker images`.
+
+## PostgreSQL switch threshold
+
+**Found:** `docs/LOAD.md` records a numeric PostgreSQL switch condition; this log had no corresponding entry.
+
+**Where:** `docs/LOAD.md` section **PostgreSQL switch condition** (step 08, `d9c56ef` / `#16` / `#17`).
+
+**Resolution (step 17):** Threshold is **200 ms** push p95 on the rare-batch profile (1 000 users × 7 clients, 5-minute cycle, ES256 verify) for a full 10-minute steady run **and** process CPU remaining below 50% of one core equivalent. The LOAD.md formula is `max(2 × measured push p95, 200 ms)` → **200 ms** dominates at the measured 1.34 ms. Step 17 did not re-run `steady.js`.
