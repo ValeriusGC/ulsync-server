@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-31 21:31:37 +0500  
-**Version:** 9  
+**Updated:** 2026-09-13 19:12:20 +0300  
+**Version:** 10  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+### Added
+
+- `POST /v1/sync/diff`: read-only divergence check returning `missing` and `stale` lists by the three conflict ranks of SPEC §2 (protocol submodule bumped to the step-18 contract).
+- `store.Wins` expresses the same last-write-wins rule as `upsertEnvelopeSQL`; a table-driven test pins the two implementations together without changing the write path.
 
 ## [0.1.0] - 2026-08-31
 
