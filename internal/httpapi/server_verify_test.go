@@ -327,6 +327,18 @@ func (e *httpEnv) pullCtx(t *testing.T, ctx context.Context, token, rawQuery str
 	return rec
 }
 
+// diff posts one divergence-check request with the given bearer token and JSON
+// body through the full route table (auth middleware, body limit, diff handler).
+func (e *httpEnv) diff(t *testing.T, token string, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/diff", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	e.srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
 // push posts one push request with the given bearer token and JSON body through
 // the full route table (auth middleware, body limit, push handler).
 func (e *httpEnv) push(t *testing.T, token string, body []byte) *httptest.ResponseRecorder {

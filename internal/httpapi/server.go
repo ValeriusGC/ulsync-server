@@ -2,6 +2,7 @@
 //
 // GET /health stays public for process supervisors. Every /v1/* route requires
 // a bearer token. POST /v1/sync/push accepts one envelope under last-write-wins.
+// POST /v1/sync/diff reports missing and stale keys by the same §2 ranks.
 // GET /v1/sync/pull returns that user's envelopes after a cursor. live=poll
 // holds the request until a row appears; live=sse streams events with a heartbeat.
 // POST body size is capped at the root handler so future routes inherit the limit
@@ -61,6 +62,7 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 	protected := http.NewServeMux()
 	protected.HandleFunc("GET /v1/whoami", whoami)
 	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush, reg))
+	protected.HandleFunc("POST /v1/sync/diff", diffHandler(db))
 	protected.HandleFunc("GET /v1/sync/pull", pullHandler(
 		db,
 		cfg.Sync.PullLimitDefault,

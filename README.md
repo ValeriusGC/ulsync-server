@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-31 21:31:37 +0500  
-**Version:** 10  
+**Updated:** 2026-09-13 19:12:20 +0300  
+**Version:** 11  
 **Document type:** readme
 
 ## What this is
@@ -172,6 +172,28 @@ curl -sS -H "Authorization: Bearer $TOKEN" 'localhost:8080/v1/sync/pull?since=0&
 ```
 
 Expected: the envelope above in `envelopes`, with `next_cursor` equal to its `server_seq`.
+
+Divergence check (after at least one push so a row exists on the server):
+
+```bash
+curl -sS -X POST localhost:8080/v1/sync/diff \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"items":[{"id":"3f2504e0-4f89-11d3-9a0c-0305e82c3301","part":"full","last_edited_at_ms":1756100000000,"revision":1,"source_id":"dev"}]}'; echo
+```
+
+Expected when the server holds the same three ranks as in the request (tie): `{"missing":[],"stale":[]}`.
+
+Unknown key:
+
+```bash
+curl -sS -X POST localhost:8080/v1/sync/diff \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"items":[{"id":"no-such-id","part":"full","last_edited_at_ms":1,"revision":1,"source_id":"dev"}]}'; echo
+```
+
+Expected: `{"missing":[{"id":"no-such-id","part":"full"}],"stale":[]}`.
+
+The endpoint is read-only: it never writes envelopes and never allocates `server_seq`. Use the `last_edited_at_ms`, `revision`, and `source_id` values from a pull response when building a diff request against a stored row.
 
 Live SSE (two terminals). Terminal 1:
 
