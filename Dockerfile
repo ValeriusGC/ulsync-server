@@ -1,6 +1,8 @@
 # Multi-stage static image. CGO is off so the runtime can be distroless
 # (no shell, no curl). Do not add VOLUME: an anonymous volume hides data
 # loss on container recreate. The named volume lives in compose.yaml.
+# Runtime USER 65532: after copying ulsync.db into the volume from the host,
+# chown 65532:65532 or push returns 503 while pull/SSE still work.
 
 FROM golang:1.26 AS build
 WORKDIR /src

@@ -1,5 +1,8 @@
 # Secrets live in config.yaml on the host (gitignored). Admin is published on
 # host loopback only so the panel is not reachable from the LAN.
+#
+# ulsync-data: runtime user 65532. After docker compose cp of ulsync.db into
+# the volume, chown 65532:65532 or push fails with 503 (pull/SSE still work).
 services:
   ulsync-server:
     build:
