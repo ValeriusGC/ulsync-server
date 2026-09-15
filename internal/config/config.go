@@ -68,9 +68,12 @@ func (d Duration) MarshalYAML() (interface{}, error) {
 type Config struct {
 	Server  Server  `yaml:"server"`
 	Storage Storage `yaml:"storage"`
-	Auth    Auth    `yaml:"auth"`
-	Sync    Sync    `yaml:"sync"`
-	Admin   Admin   `yaml:"admin"`
+	// Origin names the application contour for an authored store. Empty or absent
+	// means an open store that hello may imprint on first contact.
+	Origin string `yaml:"origin"`
+	Auth   Auth   `yaml:"auth"`
+	Sync   Sync   `yaml:"sync"`
+	Admin  Admin  `yaml:"admin"`
 }
 
 // Server holds HTTP listener settings for /health and future /v1/* sync routes.
@@ -229,6 +232,11 @@ func (c *Config) validate() error {
 	if strings.TrimSpace(c.Storage.Path) == "" {
 		problems = append(problems, "storage.path must not be empty")
 	}
+	if c.Origin != "" {
+		if err := ValidateOrigin(c.Origin); err != nil {
+			problems = append(problems, "origin: "+err.Error())
+		}
+	}
 	if c.Server.MaxBodyBytes <= 0 {
 		problems = append(problems, "server.max_body_bytes must be greater than zero")
 	}
@@ -269,6 +277,33 @@ func validateBind(field, bind string) error {
 	}
 	if _, _, err := net.SplitHostPort(bind); err != nil {
 		return fmt.Errorf("%s %q is not a valid host:port address: %v", field, bind, err)
+	}
+	return nil
+}
+
+// maxOriginLen is the upper bound from protocol SPEC §1.5 for Ulsync-Origin.
+const maxOriginLen = 256
+
+// ValidateOrigin checks the character class and length of an origin string.
+// An empty string is valid and means an open store. The same rules apply to
+// configuration and to the Ulsync-Origin header so authored pins cannot start
+// with a value HTTP would reject on the first request.
+func ValidateOrigin(origin string) error {
+	if origin == "" {
+		return nil
+	}
+	if len(origin) > maxOriginLen {
+		return fmt.Errorf("length %d exceeds maximum %d", len(origin), maxOriginLen)
+	}
+	for _, r := range origin {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '.', r == '_', r == '/', r == '-':
+		default:
+			return fmt.Errorf("character %q is outside the allowed class", r)
+		}
 	}
 	return nil
 }
