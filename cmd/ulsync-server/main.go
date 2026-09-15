@@ -70,6 +70,15 @@ func run() int {
 	}
 	defer db.Close()
 
+	if err := db.BindAuthoredOrigin(ctx, cfg.Origin); err != nil {
+		logger.Error(
+			"authored store origin does not match database",
+			"config_origin", cfg.Origin,
+			"error", err,
+		)
+		return 1
+	}
+
 	verifier, err := auth.NewVerifier(cfg.Auth, nil, logger)
 	if err != nil {
 		logger.Error("init token verifier", "error", err)

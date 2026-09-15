@@ -58,12 +58,12 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 	reg := live.New()
 	counters := metrics.New()
 
-	// All /v1/* routes share one auth wrapper and one POST body limit ancestor.
-	protected := http.NewServeMux()
-	protected.HandleFunc("GET /v1/whoami", whoami)
-	protected.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush, reg))
-	protected.HandleFunc("POST /v1/sync/diff", diffHandler(db))
-	protected.HandleFunc("GET /v1/sync/pull", pullHandler(
+	// Sync routes share bearer auth and the origin gate; whoami does not.
+	syncRoutes := http.NewServeMux()
+	syncRoutes.HandleFunc("GET /v1/sync/hello", helloHandler)
+	syncRoutes.HandleFunc("POST /v1/sync/push", pushHandler(db, cfg.Sync.MaxEnvelopesPerPush, reg))
+	syncRoutes.HandleFunc("POST /v1/sync/diff", diffHandler(db))
+	syncRoutes.HandleFunc("GET /v1/sync/pull", pullHandler(
 		db,
 		cfg.Sync.PullLimitDefault,
 		cfg.Sync.PullLimitMax,
@@ -71,6 +71,11 @@ func New(cfg *config.Config, db *store.Store, verifier *auth.Verifier, version s
 		cfg.Sync.LiveHeartbeat.Std(),
 		reg,
 	))
+
+	protected := http.NewServeMux()
+	protected.HandleFunc("GET /v1/whoami", whoami)
+	protected.Handle("/v1/sync/", requireOrigin(cfg, db, syncRoutes))
+
 	mux.Handle("/v1/", counters.Wrap(requireBearer(verifier, protected)))
 
 	handler := limitPOSTBody(mux, cfg.Server.MaxBodyBytes)

@@ -301,6 +301,9 @@ func newHTTPEnvWith(t *testing.T, tweakAuth func(*config.Auth), tweakCfg func(*c
 		t.Fatalf("store.Open() error = %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	if err := db.BindAuthoredOrigin(context.Background(), cfg.Origin); err != nil {
+		t.Fatalf("BindAuthoredOrigin() error = %v", err)
+	}
 
 	env.srv = New(cfg, db, verifier, "test-version", time.Now().UTC())
 	env.db = db
@@ -343,9 +346,33 @@ func (e *httpEnv) diff(t *testing.T, token string, body []byte) *httptest.Respon
 // the full route table (auth middleware, body limit, push handler).
 func (e *httpEnv) push(t *testing.T, token string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
+	return e.pushWithOrigin(t, token, "", body)
+}
+
+// pushWithOrigin posts one push request and optionally sets Ulsync-Origin.
+func (e *httpEnv) pushWithOrigin(t *testing.T, token, origin string, body []byte) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sync/push", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
+	if origin != "" {
+		req.Header.Set("Ulsync-Origin", origin)
+	}
+	rec := httptest.NewRecorder()
+	e.srv.Handler().ServeHTTP(rec, req)
+	return rec
+}
+
+// hello GETs /v1/sync/hello with an optional bearer and Ulsync-Origin header.
+func (e *httpEnv) hello(t *testing.T, token, origin string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/v1/sync/hello", nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	if origin != "" {
+		req.Header.Set("Ulsync-Origin", origin)
+	}
 	rec := httptest.NewRecorder()
 	e.srv.Handler().ServeHTTP(rec, req)
 	return rec

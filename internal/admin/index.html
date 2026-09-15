@@ -20,6 +20,7 @@
     <dt>Database size (bytes)</dt><dd id="storage_size_bytes">—</dd>
     <dt>Users</dt><dd id="storage_users">—</dd>
     <dt>Envelopes</dt><dd id="storage_envelopes">—</dd>
+    <dt>Store origin (server_meta)</dt><dd id="store_origin">—</dd>
     <dt>In-flight requests</dt><dd id="in_flight">—</dd>
     <dt>Total / 4xx / 5xx</dt><dd id="requests">—</dd>
     <dt>Live connections</dt><dd id="live_connections">—</dd>
@@ -45,6 +46,7 @@
       document.getElementById('storage_size_bytes').textContent = s.storage.size_bytes;
       document.getElementById('storage_users').textContent = s.storage.users;
       document.getElementById('storage_envelopes').textContent = s.storage.envelopes;
+      document.getElementById('store_origin').textContent = s.store_origin || '—';
       document.getElementById('in_flight').textContent = s.requests.in_flight;
       const total = s.requests.total;
       const pct = (n) => total === 0 ? '0%' : ((100 * n / total).toFixed(1) + '%');
