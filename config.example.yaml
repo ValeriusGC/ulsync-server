@@ -13,6 +13,11 @@ storage:
   driver: "sqlite"
   path: "./data/ulsync.db"
 
+# Optional application contour for an authored store. Omit or leave empty for an
+# open store: the first GET /v1/sync/hello with Ulsync-Origin imprints the name.
+# Must match the constant in your client (reverse-DNS plus project UUID).
+# origin: "com.example.app/7c3e9a12-4b56-4d8e-9f01-2a3b4c5d6e7f"
+
 # JWT verification for /v1/*. The server never issues tokens.
 auth:
   jwks_url: "https://<project>.supabase.co/auth/v1/.well-known/jwks.json"
