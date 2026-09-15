@@ -31,7 +31,7 @@ func TestOpenCreatesDatabaseAndAppliesMigrationsOnce(t *testing.T) {
 		t.Fatalf("database file missing: %v", err)
 	}
 
-	assertMigrationCount(t, dbPath, 1)
+	assertMigrationCount(t, dbPath, 2)
 
 	if err := first.Close(); err != nil {
 		t.Fatalf("Close() error = %v", err)
@@ -43,7 +43,7 @@ func TestOpenCreatesDatabaseAndAppliesMigrationsOnce(t *testing.T) {
 	}
 	defer second.Close()
 
-	assertMigrationCount(t, dbPath, 1)
+	assertMigrationCount(t, dbPath, 2)
 }
 
 func TestStatsOnEmptyDatabase(t *testing.T) {
@@ -225,10 +225,10 @@ func assertMigrationCount(t *testing.T, dbPath string, want int) {
 	}
 
 	var version int
-	if err := db.QueryRow(`SELECT version FROM schema_migrations`).Scan(&version); err != nil {
+	if err := db.QueryRow(`SELECT MAX(version) FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatalf("read schema_migrations version: %v", err)
 	}
-	if version != 1 {
-		t.Fatalf("schema_migrations version = %d, want 1", version)
+	if version != 2 {
+		t.Fatalf("schema_migrations version = %d, want 2", version)
 	}
 }
