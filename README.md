@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-13 19:12:20 +0300  
-**Version:** 11  
+**Updated:** 2026-09-15 13:08:58 +0300  
+**Version:** 12  
 **Document type:** readme
 
 ## What this is
@@ -78,6 +78,33 @@ The runtime image is `gcr.io/distroless/static-debian12` because the binary is s
 ## Configuration
 
 See [docs/CONFIG.md](docs/CONFIG.md) and `config.example.yaml` for every field.
+
+### Store origin (open vs authored)
+
+An **open** store has no `origin:` in configuration. The first client that calls `GET /v1/sync/hello` with a well-formed `Ulsync-Origin` header imprints that name into `server_meta`. Every later sync request from a current client must carry the same header. A legacy client that omits the header on push, pull, diff, or live continues to work on an open store after imprint.
+
+An **authored** store sets `origin:` in `config.yaml` to the same constant the application sends as `Ulsync-Origin`. The process writes that value at startup. A different header or a missing header is refused before any envelope is read or written.
+
+Hello handshake with the protocol fixture origin (requires a bearer token as in [Hands-on check](#hands-on-check)):
+
+```bash
+ORIGIN='com.example.app/7c3e9a12-4b56-4d8e-9f01-2a3b4c5d6e7f'
+curl -sS -H "Authorization: Bearer $TOKEN" -H "Ulsync-Origin: $ORIGIN" \
+  localhost:8080/v1/sync/hello; echo
+```
+
+Expected: `origin` in the JSON equals the header; `user_id` equals the token `sub`.
+
+Foreign origin on an imprinted store:
+
+```bash
+curl -sS -o /tmp/hello-mismatch.json -w '%{http_code}\n' \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Ulsync-Origin: com.example.other/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee' \
+  localhost:8080/v1/sync/hello
+```
+
+Expected: HTTP `409` and a body matching `protocol/fixtures/origin/mismatch.json` (with your stored origin in `store_origin`).
 
 For production JWT verification, set `auth.jwks_url` to your Supabase project's JWKS endpoint:
 

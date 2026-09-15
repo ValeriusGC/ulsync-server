@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-13 19:12:20 +0300  
-**Version:** 10  
+**Updated:** 2026-09-15 13:08:58 +0300  
+**Version:** 11  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -13,6 +13,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Store origin: `server_meta` remembers which application contour owns the database; `GET /v1/sync/hello` imprints an open store; optional `origin:` in configuration pins an authored store at startup.
+- `Ulsync-Origin` middleware on `/v1/sync/*` refuses a foreign application before mail runs. Legacy clients without the header still work on an open store after imprint.
+- Operations panel shows configured `origin` and the live value from `server_meta` (read-only).
 - `POST /v1/sync/diff`: read-only divergence check returning `missing` and `stale` lists by the three conflict ranks of SPEC §2 (protocol submodule bumped to the step-18 contract).
 - `store.Wins` expresses the same last-write-wins rule as `upsertEnvelopeSQL`; a table-driven test pins the two implementations together without changing the write path.
 

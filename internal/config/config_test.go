@@ -200,6 +200,42 @@ func TestDurationMarshalYAMLRoundTrip(t *testing.T) {
 	}
 }
 
+func TestValidateOriginRejectsInvalidCharacters(t *testing.T) {
+	t.Parallel()
+
+	if err := ValidateOrigin("com.example.app/has space"); err == nil {
+		t.Fatal("ValidateOrigin() expected error for space")
+	}
+	if err := ValidateOrigin("кириллица"); err == nil {
+		t.Fatal("ValidateOrigin() expected error for Cyrillic")
+	}
+}
+
+func TestValidateOriginRejectsTooLong(t *testing.T) {
+	t.Parallel()
+
+	long := "a/" + strings.Repeat("b", 256)
+	if err := ValidateOrigin(long); err == nil {
+		t.Fatal("ValidateOrigin() expected error for length > 256")
+	}
+}
+
+func TestLoadRejectsInvalidOrigin(t *testing.T) {
+	t.Parallel()
+
+	path := writeTempConfig(t, strings.Join([]string{
+		"server:",
+		"  bind: \"0.0.0.0:8080\"",
+		"storage:",
+		"  path: \"./data/ulsync.db\"",
+		"origin: \"bad origin\"",
+	}, "\n")+"\n")
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() expected error for invalid origin")
+	}
+}
+
 // writeTempConfig writes YAML to t.TempDir() and returns the file path for Load tests.
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()

@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-08-31 21:31:37 +0500  
-**Version:** 8  
+**Updated:** 2026-09-15 13:08:58 +0300  
+**Version:** 9  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -31,6 +31,20 @@ SQLite runs in WAL (write-ahead log) journal mode. Besides the main file at `sto
 - `<path>-shm` — shared-memory index for WAL readers
 
 When copying or moving the database, copy all three files together while the server is stopped. Copying only the main `.db` file can leave recent writes in the WAL and produce a database that looks empty or stale.
+
+## origin
+
+| Field | Type | Default | Purpose |
+|---|---|---|---|
+| `origin` | string | empty | Application contour for an **authored** store. Sent by clients as the `Ulsync-Origin` header. |
+
+Empty or absent means an **open** store: the first well-formed `Ulsync-Origin` on `GET /v1/sync/hello` is recorded in `server_meta` and becomes the store origin. Mail endpoints never imprint.
+
+When `origin` is set before the first client, the process writes it into `server_meta` at startup. If the database already holds a different origin, the process refuses to listen: that is a configuration error, not a silent overwrite.
+
+The value is not a URL, not a user id, and not `source_id`. Allowed characters: `A–Z`, `a–z`, `0–9`, `.`, `_`, `/`, `-`. Length 1–256. An invalid value in YAML prevents startup.
+
+The operations panel shows both `origin` from this file (not redacted) and the current value from `server_meta`. The panel does not edit either field.
 
 ## auth
 

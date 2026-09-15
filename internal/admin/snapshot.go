@@ -49,10 +49,14 @@ type lastErrorJSON struct {
 
 // Snapshot is the JSON document emitted on GET /admin/events once per tick.
 type Snapshot struct {
-	Version         string         `json:"version"`
-	StartedAt       string         `json:"started_at"`
-	UptimeSeconds   int64          `json:"uptime_seconds"`
-	Storage         storageJSON    `json:"storage"`
+	Version       string      `json:"version"`
+	StartedAt     string      `json:"started_at"`
+	UptimeSeconds int64       `json:"uptime_seconds"`
+	Storage       storageJSON `json:"storage"`
+	// StoreOrigin is the value in server_meta after imprint or authored bind.
+	// Config origin (when set) is shown separately under config and is not
+	// redacted because it is not a secret.
+	StoreOrigin     string         `json:"store_origin"`
 	Requests        requestsJSON   `json:"requests"`
 	LiveConnections int            `json:"live_connections"`
 	P95Ms           int64          `json:"p95_ms"`
@@ -155,11 +159,13 @@ func (s *Server) buildSnapshot(state *snapshotState) {
 		}
 	}
 
+	storeOrigin, _ := s.db.Origin(context.Background())
 	snap := Snapshot{
 		Version:       s.version,
 		StartedAt:     s.startedAt.UTC().Format(time.RFC3339),
 		UptimeSeconds: int64(time.Since(s.startedAt).Seconds()),
 		Storage:       storage,
+		StoreOrigin:   storeOrigin,
 		Requests: requestsJSON{
 			InFlight:  s.counters.InFlight(),
 			Total:     s.counters.Total(),
