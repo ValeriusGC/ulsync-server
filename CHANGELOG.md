@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-15 13:08:58 +0300  
-**Version:** 11  
+**Updated:** 2026-09-17 14:22:33 +0300  
+**Version:** 12  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
+- `POST /v1/sync/push` applies up to 500 envelopes in one store transaction. Default `sync.max_envelopes_per_push` is 500; values above 500 refuse startup. A client that still sends one envelope remains compatible.
+- `store.UpsertMany` wraps the existing per-row upsert SQL in a single `BEGIN`…`COMMIT`. The push handler validates the whole batch and rejects duplicate `(id, part)` keys before writing; live waiters wake once after commit when at least one row was stored.
 
 - Store origin: `server_meta` remembers which application contour owns the database; `GET /v1/sync/hello` imprints an open store; optional `origin:` in configuration pins an authored store at startup.
 - `Ulsync-Origin` middleware on `/v1/sync/*` refuses a foreign application before mail runs. Legacy clients without the header still work on an open store after imprint.

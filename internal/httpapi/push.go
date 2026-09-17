@@ -28,9 +28,9 @@ const (
 //
 //	{"envelopes":[{...}]}
 type pushRequest struct {
-	// Envelopes is the batch the client wants to store. Round 1 accepts exactly
-	// one element; the slice type stays so round 2 can raise max_envelopes_per_push
-	// without changing the wire shape.
+	// Envelopes is the batch the client wants to store. The wire accepts 1…500
+	// elements per protocol/SPEC.md §3.1; sync.max_envelopes_per_push may cap
+	// lower (for example an explicit 1).
 	Envelopes []wireEnvelope `json:"envelopes"`
 }
 
@@ -83,11 +83,12 @@ type pushResult struct {
 // pushHandler accepts envelopes for the authenticated user and returns whether
 // each one won last-write-wins. maxEnvelopes comes from sync.max_envelopes_per_push.
 //
+// Every envelope is validated and duplicate (id, part) pairs are rejected before
+// storage begins. One store transaction applies the whole batch. Live waiters are
+// notified once after commit when at least one row was stored.
+//
 // Validation rejects malformed wire fields before storage. Storage errors yield
 // 503; a losing envelope yields applied:false with 200, never 409.
-//
-// After a successful Upsert with applied true, the waiter registry is notified
-// so live pull clients for this user wake and re-query storage.
 func pushHandler(db *store.Store, maxEnvelopes int, reg *live.Registry) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req pushRequest
@@ -116,10 +117,18 @@ func pushHandler(db *store.Store, maxEnvelopes int, reg *live.Registry) http.Han
 			return
 		}
 
-		// Round 1 accepts one envelope; the loop shape stays so round 2 only
-		// changes the body of the loop, not the request format.
-		results := make([]pushResult, 0, len(req.Envelopes))
+		stored := make([]store.Envelope, 0, len(req.Envelopes))
+		seen := make(map[string]struct{}, len(req.Envelopes))
 		for _, wire := range req.Envelopes {
+			key := wire.ID + "\x00" + wire.Part
+			if _, dup := seen[key]; dup {
+				writePushError(w, http.StatusBadRequest, map[string]string{
+					"error": "duplicate envelope key",
+				})
+				return
+			}
+			seen[key] = struct{}{}
+
 			env, field, err := wireToEnvelope(wire)
 			if err != nil {
 				writePushError(w, http.StatusBadRequest, map[string]string{
@@ -128,24 +137,32 @@ func pushHandler(db *store.Store, maxEnvelopes int, reg *live.Registry) http.Han
 				})
 				return
 			}
+			stored = append(stored, env)
+		}
 
-			applied, err := db.Upsert(r.Context(), UserID(r.Context()), env)
-			if err != nil {
-				http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
-				return
+		applied, err := db.UpsertMany(r.Context(), UserID(r.Context()), stored)
+		if err != nil {
+			http.Error(w, "storage unavailable", http.StatusServiceUnavailable)
+			return
+		}
+
+		results := make([]pushResult, len(stored))
+		anyApplied := false
+		for i, env := range stored {
+			if applied[i] {
+				anyApplied = true
 			}
-			// Notify after Upsert returns: the write transaction has already
-			// committed inside Upsert. Waking a reader earlier would let it
-			// query before the row is visible, then sleep until the deadline.
-			// applied:false means nothing changed, so nobody is woken.
-			if applied {
-				reg.Notify(UserID(r.Context()))
-			}
-			results = append(results, pushResult{
+			results[i] = pushResult{
 				ID:      env.ID,
 				Part:    env.Part,
-				Applied: applied,
-			})
+				Applied: applied[i],
+			}
+		}
+		// Notify after UpsertMany returns: the write transaction has already
+		// committed. Waking a reader earlier would let it query a prefix of the
+		// batch. applied:false on every element means nothing changed.
+		if anyApplied {
+			reg.Notify(UserID(r.Context()))
 		}
 
 		w.Header().Set("Content-Type", "application/json")
