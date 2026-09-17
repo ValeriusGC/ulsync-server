@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-15 13:08:58 +0300  
-**Version:** 9  
+**Updated:** 2026-09-17 14:22:33 +0300  
+**Version:** 10  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
@@ -76,9 +76,9 @@ When this field is non-empty the process logs a warning at startup. The secret i
 
 | Field | Type | Default | Purpose |
 |---|---|---|---|
-| `max_envelopes_per_push` | integer | `1` | Maximum envelopes per push request. |
+| `max_envelopes_per_push` | integer | `500` | Maximum envelopes per push request. |
 
-Round 1 fixes this value at `1` on purpose. The handler, tests, and operator docs all assume a single envelope so conflict resolution and sequence allocation stay easy to reason about. Batching several envelopes in one HTTP request is round 2; the configuration key exists now so the limit is not hard-coded, but raising it above `1` in round 1 would violate the wire contract in `protocol/SPEC.md` §3.1.
+The default matches the protocol ceiling in `protocol/SPEC.md` §3.1 and the maximum `limit` on pull and `items` on diff. An explicit `1` remains valid for operators who want to cap batches at a single envelope. Values greater than `500` make `Load` fail and the process will not listen, for the same reason an invalid `origin` is rejected at startup. Zero is replaced by the default (`500`).
 | `pull_limit_default` | integer | `100` | Default page size for pull when `limit` is omitted. |
 | `pull_limit_max` | integer | `500` | Hard cap for pull `limit`. Values above this cap are truncated to it and are not rejected. |
 | `live_poll_timeout` | duration | `55s` | Long-poll wait when `live=poll`. |

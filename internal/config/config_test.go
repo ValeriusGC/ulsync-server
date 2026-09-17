@@ -220,6 +220,27 @@ func TestValidateOriginRejectsTooLong(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsMaxEnvelopesPerPushAboveCeiling(t *testing.T) {
+	t.Parallel()
+
+	path := writeTempConfig(t, strings.Join([]string{
+		"server:",
+		"  bind: \"0.0.0.0:8080\"",
+		"storage:",
+		"  path: \"./data/ulsync.db\"",
+		"sync:",
+		"  max_envelopes_per_push: 501",
+	}, "\n")+"\n")
+
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("Load() expected validation error")
+	}
+	if !strings.Contains(err.Error(), "sync.max_envelopes_per_push") {
+		t.Fatalf("error = %q", err)
+	}
+}
+
 func TestLoadRejectsInvalidOrigin(t *testing.T) {
 	t.Parallel()
 

@@ -35,7 +35,7 @@ auth:
 
 # Sync behaviour limits (handlers arrive in steps 04–06).
 sync:
-  max_envelopes_per_push: 1
+  max_envelopes_per_push: 500
   pull_limit_default: 100
   pull_limit_max: 500
   live_poll_timeout: "55s"
