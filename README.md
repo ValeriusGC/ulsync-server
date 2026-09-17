@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-15 13:08:58 +0300  
-**Version:** 12  
+**Updated:** 2026-09-17 14:22:33 +0300  
+**Version:** 13  
 **Document type:** readme
 
 ## What this is
@@ -38,7 +38,7 @@ auth:
   dev_hs256_secret: ""
 
 sync:
-  max_envelopes_per_push: 1
+  max_envelopes_per_push: 500
   pull_limit_default: 100
   pull_limit_max: 500
   live_poll_timeout: "55s"

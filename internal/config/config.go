@@ -27,6 +27,11 @@ import (
 //go:embed defaults.yaml
 var defaultConfigYAML []byte // compiled defaults merged before validation
 
+// MaxEnvelopesPerPushCeiling is the hard upper bound for sync.max_envelopes_per_push.
+// It matches the protocol push ceiling in SPEC §3.1 and the maximum pull limit and
+// diff batch size so one configured value cannot exceed what the wire allows.
+const MaxEnvelopesPerPushCeiling = 500
+
 // Duration is a [time.Duration] that unmarshals from a Go duration string in YAML
 // (for example "5s" or "120s"). The stock yaml.v3 decoder treats unquoted
 // duration strings as zero, which would silently disable server timeouts.
@@ -118,7 +123,8 @@ type Auth struct {
 
 // Sync holds limits and timeouts for push, pull, and live sync endpoints.
 type Sync struct {
-	// MaxEnvelopesPerPush caps envelopes per push request (1 in round 1).
+	// MaxEnvelopesPerPush caps envelopes per push request. Zero becomes the
+	// embedded default (500). Values above MaxEnvelopesPerPushCeiling fail Load.
 	MaxEnvelopesPerPush int `yaml:"max_envelopes_per_push"`
 	// PullLimitDefault is the page size when the client omits limit on pull.
 	PullLimitDefault int `yaml:"pull_limit_default"`
@@ -253,6 +259,16 @@ func (c *Config) validate() error {
 				"sync.pull_limit_default (%d) must be less than or equal to sync.pull_limit_max (%d)",
 				c.Sync.PullLimitDefault,
 				c.Sync.PullLimitMax,
+			),
+		)
+	}
+	if c.Sync.MaxEnvelopesPerPush > MaxEnvelopesPerPushCeiling {
+		problems = append(
+			problems,
+			fmt.Sprintf(
+				"sync.max_envelopes_per_push (%d) must be less than or equal to %d",
+				c.Sync.MaxEnvelopesPerPush,
+				MaxEnvelopesPerPushCeiling,
 			),
 		)
 	}
