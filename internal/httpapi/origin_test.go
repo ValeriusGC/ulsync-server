@@ -77,10 +77,7 @@ func TestHelloImprintsOpenStore(t *testing.T) {
 	if rec.Code != 200 {
 		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
 	}
-	wantBody := readProtocolFixture(t, "hello_response.json")
-	if strings.TrimSpace(rec.Body.String()) != wantBody {
-		t.Fatalf("body = %q, want fixture %q", rec.Body.String(), wantBody)
-	}
+	assertHelloBody(t, rec.Body.Bytes(), originFixturePrimary, "alice")
 	if got := readServerMetaOrigin(t, env); got != originFixturePrimary {
 		t.Fatalf("server_meta origin = %q, want %q", got, originFixturePrimary)
 	}

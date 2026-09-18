@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -68,21 +69,29 @@ func storeOrigin(ctx context.Context) string {
 	return origin
 }
 
-// helloHandler serves GET /v1/sync/hello. Imprinting already happened in
-// requireOrigin; this handler only echoes the store origin and authenticated
-// subject so the client can confirm account and contour before mail. The body
-// layout matches protocol/fixtures/origin/hello_response.json field order.
-func helloHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	body := formatHelloBody(storeOrigin(r.Context()), UserID(r.Context()))
-	_, _ = w.Write(body)
+// helloResponse is the JSON body of GET /v1/sync/hello on HTTP 200 (SPEC §3.5).
+// Field order matches protocol/fixtures/origin/hello_response.json so golden
+// readers see origin before user_id before server_now_ms.
+type helloResponse struct {
+	// Origin is the store contour held after imprint or configuration.
+	Origin string `json:"origin"`
+	// UserID is the verified JWT sub so the client can confirm the account.
+	UserID string `json:"user_id"`
+	// ServerNowMS is the store clock sample at this response (SPEC §Server clock).
+	ServerNowMS int64 `json:"server_now_ms"`
 }
 
-func formatHelloBody(origin, userID string) []byte {
-	return []byte(`{
-  "origin": "` + origin + `",
-  "user_id": "` + userID + `"
-}`)
+// helloHandler serves GET /v1/sync/hello. Imprinting already happened in
+// requireOrigin; this handler only echoes the store origin and authenticated
+// subject so the client can confirm account and contour before mail.
+func helloHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(helloResponse{
+		Origin:      storeOrigin(r.Context()),
+		UserID:      UserID(r.Context()),
+		ServerNowMS: serverNowMs(),
+	})
 }
 
 func writeOriginInvalid(w http.ResponseWriter) {

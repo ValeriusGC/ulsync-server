@@ -40,10 +40,13 @@ type diffItem struct {
 //
 // Example:
 //
-//	{"missing":[{"id":"…","part":"full"}],"stale":[]}
+//	{"missing":[{"id":"…","part":"full"}],"stale":[],"server_now_ms":…}
 type diffResponse struct {
 	Missing []diffMissingEntry `json:"missing"`
 	Stale   []diffStaleEntry   `json:"stale"`
+	// ServerNowMS is the store clock sample at this response (SPEC §Server clock).
+	// The divergence comparison still uses only client-supplied ranks (§2).
+	ServerNowMS int64 `json:"server_now_ms"`
 }
 
 // diffMissingEntry names a key the server does not hold for this user.
@@ -144,6 +147,8 @@ func diffHandler(db *store.Store) http.HandlerFunc {
 				})
 			}
 		}
+
+		resp.ServerNowMS = serverNowMs()
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)

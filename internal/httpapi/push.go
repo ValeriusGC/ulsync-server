@@ -61,13 +61,16 @@ type wireEnvelope struct {
 // envelope and whether the upsert stored it.
 //
 // server_seq is physically absent from this type so clients cannot advance the
-// pull cursor from a push response (SPEC §1.3).
+// pull cursor from a push response (SPEC §1.3). server_now_ms is stamped here
+// for wire completeness; the upsert does not read it (SPEC §Server clock).
 //
 // Example:
 //
-//	{"results":[{"id":"…","part":"full","applied":true}]}
+//	{"results":[{"id":"…","part":"full","applied":true}],"server_now_ms":…}
 type pushResponse struct {
 	Results []pushResult `json:"results"`
+	// ServerNowMS is the store clock sample at this response (SPEC §Server clock).
+	ServerNowMS int64 `json:"server_now_ms"`
 }
 
 // pushResult reports the outcome for one envelope in the request.
@@ -167,7 +170,10 @@ func pushHandler(db *store.Store, maxEnvelopes int, reg *live.Registry) http.Han
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(pushResponse{Results: results})
+		_ = json.NewEncoder(w).Encode(pushResponse{
+			Results:     results,
+			ServerNowMS: serverNowMs(),
+		})
 	}
 }
 

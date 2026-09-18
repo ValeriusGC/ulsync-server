@@ -19,8 +19,12 @@ import (
 const sseWriteTimeout = 10 * time.Second
 
 // sseCursorBody is the JSON object of an SSE cursor event (SPEC §4).
+// server_now_ms is stamped when the cursor event is written, not when the
+// stream opened, so a long quiet connection still yields a fresh sample.
 type sseCursorBody struct {
 	NextCursor int64 `json:"next_cursor"`
+	// ServerNowMS is the store clock sample at this cursor event (SPEC §Server clock).
+	ServerNowMS int64 `json:"server_now_ms"`
 }
 
 // serveLiveSSE writes the live=sse stream. Headers go out before any body so
@@ -122,7 +126,10 @@ func writeSSEEnvelope(w http.ResponseWriter, env pullEnvelope) error {
 
 // writeSSECursor emits the cursor event that closes a burst of envelopes.
 func writeSSECursor(w http.ResponseWriter, cursor int64) error {
-	data, err := json.Marshal(sseCursorBody{NextCursor: cursor})
+	data, err := json.Marshal(sseCursorBody{
+		NextCursor:  cursor,
+		ServerNowMS: serverNowMs(),
+	})
 	if err != nil {
 		return err
 	}
