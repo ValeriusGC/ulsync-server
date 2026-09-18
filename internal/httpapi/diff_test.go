@@ -28,10 +28,7 @@ func TestDiffMissingKey(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
 	}
-	want := `{"missing":[{"id":"no-such-id","part":"full"}],"stale":[]}`
-	if strings.TrimSpace(rec.Body.String()) != want {
-		t.Fatalf("body = %q, want %q", rec.Body.String(), want)
-	}
+	assertMailJSONEqual(t, rec.Body.Bytes(), []byte(`{"missing":[{"id":"no-such-id","part":"full"}],"stale":[]}`))
 }
 
 func TestDiffStaleEqualRevisionNewerTime(t *testing.T) {
@@ -97,10 +94,7 @@ func TestDiffServerAhead(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
 	}
-	want := `{"missing":[],"stale":[]}`
-	if strings.TrimSpace(rec.Body.String()) != want {
-		t.Fatalf("body = %q, want %q", rec.Body.String(), want)
-	}
+	assertMailJSONEqual(t, rec.Body.Bytes(), []byte(`{"missing":[],"stale":[]}`))
 }
 
 func TestDiffFullTie(t *testing.T) {
@@ -115,10 +109,7 @@ func TestDiffFullTie(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %q", rec.Code, rec.Body.String())
 	}
-	want := `{"missing":[],"stale":[]}`
-	if strings.TrimSpace(rec.Body.String()) != want {
-		t.Fatalf("body = %q, want %q", rec.Body.String(), want)
-	}
+	assertMailJSONEqual(t, rec.Body.Bytes(), []byte(`{"missing":[],"stale":[]}`))
 }
 
 func TestDiffEmptyResponseShape(t *testing.T) {
@@ -132,9 +123,7 @@ func TestDiffEmptyResponseShape(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if rec.Body.String() != `{"missing":[{"id":"missing-only","part":"full"}],"stale":[]}`+"\n" {
-		t.Fatalf("body = %q, want empty stale as [] not null", rec.Body.String())
-	}
+	assertMailJSONEqual(t, rec.Body.Bytes(), []byte(`{"missing":[{"id":"missing-only","part":"full"}],"stale":[]}`))
 }
 
 func TestDiffCrossUserIsolation(t *testing.T) {
@@ -150,16 +139,10 @@ func TestDiffCrossUserIsolation(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	want := `{"missing":[{"id":"env-iso","part":"full"}],"stale":[]}`
-	if strings.TrimSpace(rec.Body.String()) != want {
-		t.Fatalf("body = %q, want missing for other user", rec.Body.String())
-	}
+	assertMailJSONEqual(t, rec.Body.Bytes(), []byte(`{"missing":[{"id":"env-iso","part":"full"}],"stale":[]}`))
 
 	rec = env.diff(t, alice, body)
-	wantAlice := `{"missing":[],"stale":[]}`
-	if strings.TrimSpace(rec.Body.String()) != wantAlice {
-		t.Fatalf("alice body = %q, want tie", rec.Body.String())
-	}
+	assertMailJSONEqual(t, rec.Body.Bytes(), []byte(`{"missing":[],"stale":[]}`))
 }
 
 func TestDiffValidationErrors(t *testing.T) {
@@ -311,7 +294,7 @@ func TestDiffProtocolFixtureGaps(t *testing.T) {
 	}
 
 	wantBody := loadProtocolDiffFixture(t, "response_gaps.json")
-	assertJSONEqual(t, rec.Body.Bytes(), wantBody)
+	assertMailJSONEqual(t, rec.Body.Bytes(), wantBody)
 }
 
 func TestDiffProtocolFixtureTie(t *testing.T) {
@@ -328,7 +311,7 @@ func TestDiffProtocolFixtureTie(t *testing.T) {
 	}
 
 	wantBody := loadProtocolDiffFixture(t, "response_empty.json")
-	assertJSONEqual(t, rec.Body.Bytes(), wantBody)
+	assertMailJSONEqual(t, rec.Body.Bytes(), wantBody)
 }
 
 // seedDiffEnvelope stores one row with the given conflict ranks for diff tests.

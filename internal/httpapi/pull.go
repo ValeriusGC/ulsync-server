@@ -18,12 +18,15 @@ import (
 //
 // Example:
 //
-//	{"envelopes":[{"id":"env-1","part":"full","server_seq":1,…}],"next_cursor":1}
+//	{"envelopes":[{"id":"env-1","part":"full","server_seq":1,…}],"next_cursor":1,"server_now_ms":…}
 type pullResponse struct {
 	// Envelopes is this user's page after the cursor, ordered by server_seq.
 	Envelopes []pullEnvelope `json:"envelopes"`
 	// NextCursor is the since value the client should send on the next pull.
 	NextCursor int64 `json:"next_cursor"`
+	// ServerNowMS is the store clock sample at this response (SPEC §Server clock).
+	// Empty pages still carry it so clients can sample without new envelopes.
+	ServerNowMS int64 `json:"server_now_ms"`
 }
 
 // pullEnvelope is one stored envelope on the pull wire. It is a separate type
@@ -191,7 +194,11 @@ func writePullJSON(w http.ResponseWriter, rows []store.Envelope, cursor int64) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(pullResponse{Envelopes: out, NextCursor: cursor})
+	_ = json.NewEncoder(w).Encode(pullResponse{
+		Envelopes:   out,
+		NextCursor:  cursor,
+		ServerNowMS: serverNowMs(),
+	})
 }
 
 // serveLivePoll answers live=poll. A non-empty first page is returned at once.
