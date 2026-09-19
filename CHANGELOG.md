@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 20:41:52 +0300  
-**Version:** 14  
+**Updated:** 2026-09-19 21:01:53 +0300  
+**Version:** 15  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -12,6 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
+- One-line install: POSIX `scripts/install.sh` downloads the linux static binary for the host arch, seeds `$HOME/.ulsync` with exactly one of `--jwks-url` or `--shared-secret`, and starts the process in the background. A second run does not overwrite YAML. There is no systemd unit, no macOS binary, and the Dart package is not published.
 
 - GitHub Actions release workflow on `v*` tags: static linux `amd64` and `arm64` binaries (`CGO_ENABLED=0`) plus `install.sh`, published with `gh release create`. The job fails when `scripts/install.sh` is absent so a tag cannot ship two binaries without the installer.
 
