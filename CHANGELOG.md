@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-17 14:22:33 +0300  
-**Version:** 12  
+**Updated:** 2026-09-19 20:06:19 +0300  
+**Version:** 13  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
+- First-run seed: when `-config` is missing, exactly one of `-jwks-url` or `-shared-secret` writes the YAML from embedded defaults, then the process starts. An existing file is never overwritten. URL seed leaves `dev_hs256_secret` empty; secret seed leaves `jwks_url` empty after `Load` and lists `HS256`. The process does not invent `local-dev-only` and does not accept a private PEM.
+- `applyDefaults` no longer fills the Supabase `jwks_url` placeholder when `dev_hs256_secret` or `jwks_file` is set, so a secret-only file does not fetch a foreign host.
 
 - `POST /v1/sync/push` applies up to 500 envelopes in one store transaction. Default `sync.max_envelopes_per_push` is 500; values above 500 refuse startup. A client that still sends one envelope remains compatible.
 - `store.UpsertMany` wraps the existing per-row upsert SQL in a single `BEGIN`…`COMMIT`. The push handler validates the whole batch and rejects duplicate `(id, part)` keys before writing; live waiters wake once after commit when at least one row was stored.
