@@ -80,7 +80,7 @@ func TestSeed(t *testing.T) {
 		t.Parallel()
 
 		path := filepath.Join(t.TempDir(), "etc", "ulsync", "config.yaml")
-		if err := seedConfig(path, seedJWKSURL, ""); err != nil {
+		if err := seedConfig(path, seedJWKSURL, "", "", ""); err != nil {
 			t.Fatalf("seedConfig() error = %v", err)
 		}
 		info, err := os.Stat(path)
@@ -123,7 +123,7 @@ func TestSeed(t *testing.T) {
 		if err := os.WriteFile(path, original, 0o600); err != nil {
 			t.Fatalf("WriteFile() error = %v", err)
 		}
-		if err := ensureConfig(path, seedJWKSURL, seedSecret); err != nil {
+		if err := ensureConfig(path, seedJWKSURL, seedSecret, "127.0.0.1:9", "127.0.0.1:10"); err != nil {
 			t.Fatalf("ensureConfig() error = %v", err)
 		}
 		got, err := os.ReadFile(path)
@@ -139,7 +139,7 @@ func TestSeed(t *testing.T) {
 		t.Parallel()
 
 		path := filepath.Join(t.TempDir(), "config.yaml")
-		if err := seedConfig(path, seedJWKSURL, ""); err != nil {
+		if err := seedConfig(path, seedJWKSURL, "", "", ""); err != nil {
 			t.Fatalf("seedConfig() error = %v", err)
 		}
 		cfg, err := config.Load(path)
@@ -155,7 +155,7 @@ func TestSeed(t *testing.T) {
 		t.Parallel()
 
 		path := filepath.Join(t.TempDir(), "config.yaml")
-		if err := seedConfig(path, seedJWKSURL, ""); err != nil {
+		if err := seedConfig(path, seedJWKSURL, "", "", ""); err != nil {
 			t.Fatalf("seedConfig() error = %v", err)
 		}
 		cfg, err := config.Load(path)
@@ -174,7 +174,7 @@ func TestSeed(t *testing.T) {
 		t.Parallel()
 
 		path := filepath.Join(t.TempDir(), "config.yaml")
-		if err := seedConfig(path, "", seedSecret); err != nil {
+		if err := seedConfig(path, "", seedSecret, "", ""); err != nil {
 			t.Fatalf("seedConfig() error = %v", err)
 		}
 		cfg, err := config.Load(path)
@@ -222,17 +222,85 @@ func TestVersionAndHealthcheckDoNotSeed(t *testing.T) {
 	}
 }
 
+// TestSeedListen is not part of the frozen accept_40 names. Empty listen
+// flags keep 8080/8081; a second store on one host passes a different pair.
+func TestSeedListen(t *testing.T) {
+	t.Parallel()
+
+	t.Run("listen and admin-listen land in yaml then GET /health is 200", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := seedConfig(path, seedJWKSURL, "", "127.0.0.1:18080", "127.0.0.1:18081"); err != nil {
+			t.Fatalf("seedConfig() error = %v", err)
+		}
+		cfg, err := config.Load(path)
+		if err != nil {
+			t.Fatalf("Load() error = %v", err)
+		}
+		if cfg.Server.Bind != "127.0.0.1:18080" {
+			t.Fatalf("server.bind = %q, want 127.0.0.1:18080", cfg.Server.Bind)
+		}
+		if cfg.Admin.Bind != "127.0.0.1:18081" {
+			t.Fatalf("admin.bind = %q, want 127.0.0.1:18081", cfg.Admin.Bind)
+		}
+		if got := liveHealthStatus(t, path); got != http.StatusOK {
+			t.Fatalf("GET /health status = %d, want 200", got)
+		}
+	})
+
+	t.Run("invalid listen exits 1 and does not create the file", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		stderr := &bytes.Buffer{}
+		code := runMain([]string{
+			"-config", path,
+			"-jwks-url", seedJWKSURL,
+			"-listen", "noport",
+		}, io.Discard, stderr)
+		if code != 1 {
+			t.Fatalf("exit = %d, want 1", code)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("config file created: %v", err)
+		}
+		if !strings.Contains(stderr.String(), "server.bind") {
+			t.Fatalf("stderr = %q, want server.bind", stderr.String())
+		}
+	})
+
+	t.Run("non-loopback admin-listen without token exits 1", func(t *testing.T) {
+		t.Parallel()
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		stderr := &bytes.Buffer{}
+		code := runMain([]string{
+			"-config", path,
+			"-jwks-url", seedJWKSURL,
+			"-admin-listen", "0.0.0.0:18081",
+		}, io.Discard, stderr)
+		if code != 1 {
+			t.Fatalf("exit = %d, want 1", code)
+		}
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("config file created: %v", err)
+		}
+		msg := stderr.String()
+		if !strings.Contains(msg, "admin.bind") || !strings.Contains(msg, "admin.token") {
+			t.Fatalf("stderr = %q, want admin.bind and admin.token", msg)
+		}
+	})
+}
+
 // liveHealthStatus copies seeded YAML, binds 127.0.0.1 to a free port, and
-// serves the existing HTTP stack so go test never occupies 8080.
+// serves the existing HTTP stack so go test never occupies the seeded bind.
 func liveHealthStatus(t *testing.T, seededPath string) int {
 	t.Helper()
 
 	orig, err := config.Load(seededPath)
 	if err != nil {
 		t.Fatalf("Load(seeded) error = %v", err)
-	}
-	if orig.Server.Bind != "0.0.0.0:8080" {
-		t.Fatalf("seeded server.bind = %q, want 0.0.0.0:8080", orig.Server.Bind)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

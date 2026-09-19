@@ -18,7 +18,7 @@ import (
 // A missing file requires exactly one of the two flags. Neither, or both,
 // returns an error that names -jwks-url and -shared-secret so a stranger
 // without YAML sees the flags, not a wrapped errno from read config.
-func ensureConfig(path, jwksURL, sharedSecret string) error {
+func ensureConfig(path, jwksURL, sharedSecret, listen, adminListen string) error {
 	_, err := os.Stat(path)
 	switch {
 	case err == nil:
@@ -35,7 +35,7 @@ func ensureConfig(path, jwksURL, sharedSecret string) error {
 	case jwksURL != "" && sharedSecret != "":
 		return fmt.Errorf("-jwks-url and -shared-secret are mutually exclusive; pass exactly one to seed %q", path)
 	}
-	return seedConfig(path, jwksURL, sharedSecret)
+	return seedConfig(path, jwksURL, sharedSecret, listen, adminListen)
 }
 
 // seedConfig writes a first-run YAML at path. Exactly one of jwksURL or
@@ -46,14 +46,14 @@ func ensureConfig(path, jwksURL, sharedSecret string) error {
 // local-dev-only. Secret seed leaves jwks_url empty so applyDefaults cannot
 // point the process at the Supabase placeholder. A private PEM is not accepted:
 // this process verifies tokens, it does not issue them.
-func seedConfig(path, jwksURL, sharedSecret string) error {
+func seedConfig(path, jwksURL, sharedSecret, listen, adminListen string) error {
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("config file %q already exists", path)
 	} else if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("stat config: %w", err)
 	}
 
-	cfg, err := config.Seed(path, jwksURL, sharedSecret)
+	cfg, err := config.Seed(path, jwksURL, sharedSecret, listen, adminListen)
 	if err != nil {
 		return err
 	}

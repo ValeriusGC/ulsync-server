@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 21:01:53 +0300  
-**Version:** 15  
+**Updated:** 2026-09-19 21:31:31 +0300  
+**Version:** 16  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -12,6 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
+- One host, several stores: first-run `-listen` / `-admin-listen` (and `install.sh --listen` / `--admin-listen`) write `server.bind` and `admin.bind`. `--prefix` is the directory. A live `/health` on 8080 is not treated as success for a different prefix. Empty flags keep `0.0.0.0:8080` and `127.0.0.1:8081`. Changing a port later is a YAML edit and a restart.
 
 - One-line install: POSIX `scripts/install.sh` downloads the linux static binary for the host arch, seeds `$HOME/.ulsync` with exactly one of `--jwks-url` or `--shared-secret`, and starts the process in the background. A second run does not overwrite YAML. There is no systemd unit, no macOS binary, and the Dart package is not published.
 

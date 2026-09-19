@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 21:01:53 +0300  
-**Version:** 14  
+**Updated:** 2026-09-19 21:31:31 +0300  
+**Version:** 15  
 **Document type:** readme
 
 ## What this is
@@ -32,6 +32,17 @@ The script downloads a static linux binary, writes `$HOME/.ulsync`, starts the p
 **Keys as a file.** Put public keys in a JWKS file, set `auth.jwks_file`. Never copy the private key. To rotate: replace the file; wait up to `jwks_cache_ttl` (default 10 minutes) or restart. Not a one-liner: the file must exist first.
 
 **No cloud login, one person.** One string in the store and in the app (`--shared-secret`). This still verifies every bearer token; knowing the string is what lets a client mint one. To rotate: change the string in both places, restart; old tokens die.
+
+## Several stores on one host
+
+One VPS holds several apps. Each store is a directory and a pair of ports. `--listen` is mail (`/health` and `/v1/*`); `--admin-listen` is the panel and stays on loopback. A live `/health` on 8080 is not success for a different prefix.
+
+```sh
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix "$HOME/.ulsync/notes" --listen 0.0.0.0:8080 --admin-listen 127.0.0.1:8081 --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix "$HOME/.ulsync/ledger" --listen 0.0.0.0:8180 --admin-listen 127.0.0.1:8181 --shared-secret 'pick-a-long-random-string'
+```
+
+Do not stop the first process before the second command. Changing a port later is a YAML edit and a restart; repeating `install.sh` does not rewrite bind. Without these flags the first store still uses `0.0.0.0:8080` and `127.0.0.1:8081`.
 
 ## If you already have Docker
 

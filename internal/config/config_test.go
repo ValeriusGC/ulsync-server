@@ -327,6 +327,51 @@ func TestLoadRejectsInvalidOrigin(t *testing.T) {
 	}
 }
 
+func TestSeedCustomBinds(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "nested", "config.yaml")
+	cfg, err := Seed(path, "https://example.invalid/jwks.json", "", "127.0.0.1:18080", "127.0.0.1:18081")
+	if err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	if cfg.Server.Bind != "127.0.0.1:18080" {
+		t.Fatalf("server.bind = %q, want 127.0.0.1:18080", cfg.Server.Bind)
+	}
+	if cfg.Admin.Bind != "127.0.0.1:18081" {
+		t.Fatalf("admin.bind = %q, want 127.0.0.1:18081", cfg.Admin.Bind)
+	}
+}
+
+func TestSeedEmptyBindsKeepDefaults(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	cfg, err := Seed(path, "https://example.invalid/jwks.json", "", "", "")
+	if err != nil {
+		t.Fatalf("Seed() error = %v", err)
+	}
+	if cfg.Server.Bind != "0.0.0.0:8080" {
+		t.Fatalf("server.bind = %q, want 0.0.0.0:8080", cfg.Server.Bind)
+	}
+	if cfg.Admin.Bind != "127.0.0.1:8081" {
+		t.Fatalf("admin.bind = %q, want 127.0.0.1:8081", cfg.Admin.Bind)
+	}
+}
+
+func TestSeedRejectsNonLoopbackAdmin(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	_, err := Seed(path, "https://example.invalid/jwks.json", "", "", "0.0.0.0:8081")
+	if err == nil {
+		t.Fatal("Seed() expected error for non-loopback admin.bind")
+	}
+	if !strings.Contains(err.Error(), "admin.bind") || !strings.Contains(err.Error(), "admin.token") {
+		t.Fatalf("error = %q, want admin.bind and admin.token", err)
+	}
+}
+
 // writeTempConfig writes YAML to t.TempDir() and returns the file path for Load tests.
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()

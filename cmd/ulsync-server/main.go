@@ -57,6 +57,8 @@ func runMain(args []string, stdout, stderr io.Writer) int {
 	doHealthcheck := fs.Bool("healthcheck", false, "GET http://127.0.0.1:8080/health and exit 0 only on HTTP 200")
 	jwksURL := fs.String("jwks-url", "", "HTTPS JWKS URL used to seed a missing config file")
 	sharedSecret := fs.String("shared-secret", "", "HS256 shared secret used to seed a missing config file")
+	listen := fs.String("listen", "", "host:port written to server.bind when seeding; ignored if the config file already exists")
+	adminListen := fs.String("admin-listen", "", "host:port written to admin.bind when seeding; ignored if the config file already exists")
 	if err := fs.Parse(args); err != nil {
 		return 1
 	}
@@ -69,7 +71,7 @@ func runMain(args []string, stdout, stderr io.Writer) int {
 		return probeHealth(healthClient(), healthcheckURL)
 	}
 
-	if err := ensureConfig(*configPath, *jwksURL, *sharedSecret); err != nil {
+	if err := ensureConfig(*configPath, *jwksURL, *sharedSecret, *listen, *adminListen); err != nil {
 		fmt.Fprintln(stderr, err.Error())
 		return 1
 	}
