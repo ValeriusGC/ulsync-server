@@ -2,7 +2,11 @@
 // drives every runtime path, bind address, and timeout in the server.
 //
 // Unknown YAML keys are rejected (KnownFields). Zero values in the file are
-// filled from embedded defaults.yaml before validation runs.
+// filled from embedded defaults.yaml before validation runs. An empty
+// jwks_url is filled with the Supabase placeholder only when both the
+// development secret and jwks_file are empty.
+//
+// Seed builds the first-run document written when -config is missing.
 //
 // Example:
 //
@@ -105,6 +109,9 @@ type Storage struct {
 // validated here so a single config file describes the full deployment.
 type Auth struct {
 	// JWKSURL is the URL to fetch the JSON Web Key Set for JWT verification.
+	// applyDefaults fills an empty value with the embedded Supabase placeholder
+	// only when DevHS256Secret and JWKSFile are also empty, so a secret-only
+	// file does not send traffic to a foreign host.
 	JWKSURL string `yaml:"jwks_url"`
 	// JWKSFile, when non-empty, is a path to a static JWKS document. The
 	// process reads this file and does not fetch JWKSURL.
@@ -117,7 +124,9 @@ type Auth struct {
 	Audience []string `yaml:"audience"`
 	// Issuer, when non-empty, requires a matching JWT iss claim.
 	Issuer string `yaml:"issuer"`
-	// DevHS256Secret is a development-only shared secret for HS256 tokens (step 03).
+	// DevHS256Secret is the shared HMAC secret for HS256 tokens. Empty means
+	// HS256 is unused. First-run -shared-secret writes the operator's string;
+	// the process never invents a canned value such as local-dev-only.
 	DevHS256Secret string `yaml:"dev_hs256_secret"`
 }
 
@@ -169,6 +178,11 @@ func Load(path string) (*Config, error) {
 }
 
 // applyDefaults fills zero-valued fields from the embedded defaults.yaml.
+//
+// An empty jwks_url receives the Supabase placeholder only when both
+// dev_hs256_secret and jwks_file are empty. A secret-only or file-only
+// document would otherwise fetch someone else's keys. Existing YAML that
+// has neither a secret nor a file still gets the placeholder, as before.
 func (c *Config) applyDefaults() {
 	var defaults Config
 	if err := yaml.Unmarshal(defaultConfigYAML, &defaults); err != nil {
@@ -193,7 +207,9 @@ func (c *Config) applyDefaults() {
 	if c.Storage.Path == "" {
 		c.Storage.Path = defaults.Storage.Path
 	}
-	if c.Auth.JWKSURL == "" {
+	if c.Auth.JWKSURL == "" &&
+		strings.TrimSpace(c.Auth.DevHS256Secret) == "" &&
+		strings.TrimSpace(c.Auth.JWKSFile) == "" {
 		c.Auth.JWKSURL = defaults.Auth.JWKSURL
 	}
 	if c.Auth.JWKSCacheTTL == 0 {
