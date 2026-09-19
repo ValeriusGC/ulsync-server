@@ -1,8 +1,8 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 20:06:19 +0300  
-**Version:** 11  
+**Updated:** 2026-09-19 21:31:31 +0300  
+**Version:** 12  
 **Document type:** reference
 
 The server reads a single YAML file (see `config.example.yaml`). After start, every runtime path, bind address, and timeout comes from that file; there is no environment-variable configuration. When the file named by `-config` is missing, exactly one of `-jwks-url` or `-shared-secret` writes it from embedded defaults and that one flag, then `Load` runs as usual. An existing file is never overwritten: first-run flags are not a rewrite API.
@@ -82,10 +82,12 @@ These flags apply only when the `-config` path does not exist. `-version` and `-
 |---|---|
 | `-jwks-url` | Seed `auth.jwks_url` from the operator's IdP. `dev_hs256_secret` stays empty. The URL in the file equals the flag, not the Supabase placeholder. |
 | `-shared-secret` | Seed `auth.dev_hs256_secret` from the operator's string (personal cloud, not "turn auth off"). After `Load`, `jwks_url` is empty. `allowed_algs` contains `HS256`. |
+| `-listen` | Seed `server.bind` (`host:port`). Empty keeps `0.0.0.0:8080`. A second store on the same host passes a different port. |
+| `-admin-listen` | Seed `admin.bind` (`host:port`). Empty keeps `127.0.0.1:8081`. Non-loopback with an empty `admin.token` is refused at seed, same rule as `Load`. |
 
-Pass exactly one. Neither flag, or both at once, exits 1 and the message names `-jwks-url` and `-shared-secret`; the file is not created. That is XOR on purpose: merging would pick an authority silently (URL wins, or a leftover secret forges tokens). There is no `-jwks-file` here: a blank host has no JWKS file yet; that path is a later YAML edit.
+Pass exactly one of `-jwks-url` or `-shared-secret`. Neither flag, or both at once, exits 1 and the message names those two flags; the file is not created. That is XOR on purpose: merging would pick an authority silently (URL wins, or a leftover secret forges tokens). There is no `-jwks-file` here: a blank host has no JWKS file yet; that path is a later YAML edit. `-listen` and `-admin-listen` are optional and ignored when the file already exists.
 
-Any seed writes `admin.bind` `127.0.0.1:8081` with an empty `admin.token` (a seeded Ubuntu process is not the Compose container that binds `0.0.0.0:8081`). `storage.driver` is `sqlite`. `storage.path` is the absolute `{directory of -config}/data/ulsync.db` so a later cwd change does not move the database. `server.bind` stays `0.0.0.0:8080`. `origin` is not seeded. The write is atomic (temporary file in the same directory, then `Rename`) with mode `0600`.
+Any seed writes `admin.bind` `127.0.0.1:8081` unless `-admin-listen` says otherwise, with an empty `admin.token` (a seeded Ubuntu process is not the Compose container that binds `0.0.0.0:8081`). `storage.driver` is `sqlite`. `storage.path` is the absolute `{directory of -config}/data/ulsync.db` so a later cwd change does not move the database. `server.bind` is `0.0.0.0:8080` unless `-listen` says otherwise. `origin` is not seeded. The write is atomic (temporary file in the same directory, then `Rename`) with mode `0600`.
 
 ## sync
 

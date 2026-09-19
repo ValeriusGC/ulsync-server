@@ -22,6 +22,11 @@
 # accept a private PEM; there is no --jwks-file here because a blank
 # host has no JWKS file yet.
 #
+# Why --prefix and --listen: one VPS holds several stores. Each store
+# is a directory and a pair of ports. --listen is mail (/health, /v1/*);
+# --admin-listen is the panel (keep loopback). A live /health on 8080
+# is not success for a different prefix.
+#
 # Why --bin: Machine (and a host without GitHub Releases) already has
 # a binary. Without --bin this script downloads
 # ulsync-server_linux_<arch> from releases/latest/download/. Names are
@@ -31,13 +36,14 @@
 # Release asset names are frozen in DECISION_INSTALL; renaming breaks
 # the step-41 workflow and this script together.
 RELEASE_BASE='https://github.com/ValeriusGC/ulsync-server/releases/latest/download'
-HEALTH_URL='http://127.0.0.1:8080/health'
 HEALTH_WAIT_SECS=30
 
 JWKS_URL=
 SHARED_SECRET=
 PREFIX=
 BIN=
+LISTEN=
+ADMIN_LISTEN=
 
 die() {
 	echo "install.sh: $*" >&2
@@ -46,10 +52,12 @@ die() {
 
 usage() {
 	echo "install.sh: pass exactly one of --jwks-url or --shared-secret" >&2
-	echo "  --jwks-url URL       seed a missing config from a public JWKS URL" >&2
-	echo "  --shared-secret STR  seed a missing config from one HMAC string" >&2
-	echo "  --prefix DIR         default \$HOME/.ulsync" >&2
-	echo "  --bin PATH           use this binary; skip GitHub download" >&2
+	echo "  --jwks-url URL         seed a missing config from a public JWKS URL" >&2
+	echo "  --shared-secret STR    seed a missing config from one HMAC string" >&2
+	echo "  --prefix DIR           default \$HOME/.ulsync" >&2
+	echo "  --listen HOST:PORT     first-run server.bind; default 0.0.0.0:8080" >&2
+	echo "  --admin-listen HOST:PORT  first-run admin.bind; default 127.0.0.1:8081" >&2
+	echo "  --bin PATH             use this binary; skip GitHub download" >&2
 }
 
 need_arg() {
@@ -74,6 +82,16 @@ while [ $# -gt 0 ]; do
 	--prefix)
 		need_arg "$1" $(($# - 1))
 		PREFIX=$2
+		shift 2
+		;;
+	--listen)
+		need_arg "$1" $(($# - 1))
+		LISTEN=$2
+		shift 2
+		;;
+	--admin-listen)
+		need_arg "$1" $(($# - 1))
+		ADMIN_LISTEN=$2
 		shift 2
 		;;
 	--bin)
@@ -129,6 +147,51 @@ place_binary() {
 	chmod 0755 "$BIN_DEST" || die "chmod $BIN_DEST failed"
 }
 
+# yaml_bind prints host:port from the first bind: line under section $2.
+# IPv4 host:port only; first-run --listen is not an IPv6 bracket address.
+yaml_bind() {
+	_file=$1
+	_sec=$2
+	awk -v sec="$_sec" '
+		$0 ~ "^"sec":" {insec=1; next}
+		insec && /^[^[:space:]#]/ {insec=0}
+		insec {
+			line=$0
+			sub(/^[[:space:]]+/, "", line)
+			if (line ~ /^bind:[[:space:]]*/) {
+				sub(/^bind:[[:space:]]*/, "", line)
+				gsub(/"/, "", line)
+				gsub(/\047/, "", line)
+				print line
+				exit
+			}
+		}
+	' "$_file"
+}
+
+# health_url_from_bind maps 0.0.0.0 (all interfaces) to loopback so curl
+# from this script reaches the process it just started.
+health_url_from_bind() {
+	_bind=$1
+	_port=${_bind##*:}
+	_host=${_bind%:*}
+	case "$_host" in
+	0.0.0.0|::|'') _host=127.0.0.1 ;;
+	esac
+	echo "http://${_host}:${_port}/health"
+}
+
+resolve_health_url() {
+	_bind=
+	if [ -f "$CONFIG" ]; then
+		_bind=$(yaml_bind "$CONFIG" server)
+	else
+		_bind=$LISTEN
+	fi
+	[ -n "$_bind" ] || _bind='0.0.0.0:8080'
+	health_url_from_bind "$_bind"
+}
+
 place_binary
 
 # Missing YAML and no seed flag: fail here so the operator sees the two
@@ -137,6 +200,8 @@ place_binary
 if [ ! -f "$CONFIG" ] && [ -z "$JWKS_URL" ] && [ -z "$SHARED_SECRET" ]; then
 	die "config.yaml is missing under $PREFIX; pass exactly one of --jwks-url or --shared-secret"
 fi
+
+HEALTH_URL=$(resolve_health_url)
 
 health_ok() {
 	curl -fsS -o /dev/null --connect-timeout 1 "$HEALTH_URL" 2>/dev/null
@@ -163,9 +228,9 @@ wait_health() {
 	return 1
 }
 
-# A listener already serving /health means 8080 is taken by a live
-# store. Do not start a second process. YAML is left byte-for-byte.
-if health_ok; then
+# A listener already serving THIS prefix's bind means the store is up.
+# A foreign process on 8080 is not success for a different prefix or port.
+if [ -f "$CONFIG" ] && health_ok; then
 	echo "$HEALTH_URL"
 	exit 0
 fi
@@ -180,16 +245,21 @@ if [ -f "$PIDFILE" ]; then
 fi
 
 # Existing YAML: start from disk and do not pass seed flags, even if
-# the one-liner still has --jwks-url / --shared-secret. Missing YAML:
-# pass exactly one seed flag; the binary writes the file.
+# the one-liner still has --jwks-url / --shared-secret / --listen.
+# Missing YAML: pass exactly one seed flag plus optional listen flags;
+# the binary writes the file.
 if [ -f "$CONFIG" ]; then
 	"$BIN_DEST" -config "$CONFIG" >>"$LOG" 2>&1 &
 else
+	set -- -config "$CONFIG"
 	if [ -n "$JWKS_URL" ]; then
-		"$BIN_DEST" -config "$CONFIG" -jwks-url "$JWKS_URL" >>"$LOG" 2>&1 &
+		set -- "$@" -jwks-url "$JWKS_URL"
 	else
-		"$BIN_DEST" -config "$CONFIG" -shared-secret "$SHARED_SECRET" >>"$LOG" 2>&1 &
+		set -- "$@" -shared-secret "$SHARED_SECRET"
 	fi
+	[ -n "$LISTEN" ] && set -- "$@" -listen "$LISTEN"
+	[ -n "$ADMIN_LISTEN" ] && set -- "$@" -admin-listen "$ADMIN_LISTEN"
+	"$BIN_DEST" "$@" >>"$LOG" 2>&1 &
 fi
 pid=$!
 # Pid file is how this script finds the job later. Not a systemd unit.

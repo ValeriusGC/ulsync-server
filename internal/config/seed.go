@@ -23,7 +23,11 @@ const algHS256 = "HS256"
 // loopback with an empty token because a seeded Ubuntu process is not the
 // Compose container that publishes 0.0.0.0:8081. storage.path is absolute
 // under the config directory so a later cwd change does not move the database.
-func Seed(configPath, jwksURL, sharedSecret string) (*Config, error) {
+//
+// serverBind and adminBind are optional first-run listen addresses (host:port).
+// Empty keeps 0.0.0.0:8080 and 127.0.0.1:8081. A second store on the same
+// host passes a different pair so two prefixes do not share port 8080.
+func Seed(configPath, jwksURL, sharedSecret, serverBind, adminBind string) (*Config, error) {
 	jwksURL = strings.TrimSpace(jwksURL)
 	sharedSecret = strings.TrimSpace(sharedSecret)
 	if (jwksURL == "") == (sharedSecret == "") {
@@ -46,6 +50,22 @@ func Seed(configPath, jwksURL, sharedSecret string) (*Config, error) {
 	cfg.Storage.Path = filepath.Join(filepath.Dir(abs), "data", "ulsync.db")
 	cfg.Admin.Bind = "127.0.0.1:8081"
 	cfg.Admin.Token = ""
+
+	if b := strings.TrimSpace(serverBind); b != "" {
+		if err := validateBind("server.bind", b); err != nil {
+			return nil, err
+		}
+		cfg.Server.Bind = b
+	}
+	if b := strings.TrimSpace(adminBind); b != "" {
+		if err := validateBind("admin.bind", b); err != nil {
+			return nil, err
+		}
+		cfg.Admin.Bind = b
+	}
+	if !isLoopbackBind(cfg.Admin.Bind) && strings.TrimSpace(cfg.Admin.Token) == "" {
+		return nil, fmt.Errorf("admin.bind listens on a non-loopback address while admin.token is empty; bind to 127.0.0.1 or set admin.token")
+	}
 
 	if jwksURL != "" {
 		cfg.Auth.JWKSURL = jwksURL
