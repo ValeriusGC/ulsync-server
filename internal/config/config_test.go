@@ -241,6 +241,76 @@ func TestLoadRejectsMaxEnvelopesPerPushAboveCeiling(t *testing.T) {
 	}
 }
 
+// TestLoadLeavesJWKSURLEmptyWhenSecretSet is the Load-path half of secret
+// seed: a document with only a shared secret must not inherit the Supabase
+// JWKS placeholder, or the process would fetch a foreign host.
+func TestLoadLeavesJWKSURLEmptyWhenSecretSet(t *testing.T) {
+	t.Parallel()
+
+	path := writeTempConfig(t, strings.Join([]string{
+		"server:",
+		"  bind: \"0.0.0.0:8080\"",
+		"storage:",
+		"  path: \"./data/ulsync.db\"",
+		"auth:",
+		"  dev_hs256_secret: \"operator-secret\"",
+		"  allowed_algs: [\"HS256\"]",
+	}, "\n")+"\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.JWKSURL != "" {
+		t.Fatalf("jwks_url = %q, want empty when secret is set", cfg.Auth.JWKSURL)
+	}
+}
+
+// TestLoadLeavesJWKSURLEmptyWhenJWKSFileSet keeps file-only hosts off the
+// placeholder URL: keys come from disk, not from a foreign fetch.
+func TestLoadLeavesJWKSURLEmptyWhenJWKSFileSet(t *testing.T) {
+	t.Parallel()
+
+	path := writeTempConfig(t, strings.Join([]string{
+		"server:",
+		"  bind: \"0.0.0.0:8080\"",
+		"storage:",
+		"  path: \"./data/ulsync.db\"",
+		"auth:",
+		"  jwks_file: \"/tmp/jwks.json\"",
+	}, "\n")+"\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Auth.JWKSURL != "" {
+		t.Fatalf("jwks_url = %q, want empty when jwks_file is set", cfg.Auth.JWKSURL)
+	}
+}
+
+// TestLoadFillsJWKSPlaceholderWhenNeitherSecretNorFile keeps the historical
+// default for YAML that omits auth entirely.
+func TestLoadFillsJWKSPlaceholderWhenNeitherSecretNorFile(t *testing.T) {
+	t.Parallel()
+
+	path := writeTempConfig(t, strings.Join([]string{
+		"server:",
+		"  bind: \"0.0.0.0:8080\"",
+		"storage:",
+		"  path: \"./data/ulsync.db\"",
+	}, "\n")+"\n")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	const placeholder = "https://<project>.supabase.co/auth/v1/.well-known/jwks.json"
+	if cfg.Auth.JWKSURL != placeholder {
+		t.Fatalf("jwks_url = %q, want placeholder", cfg.Auth.JWKSURL)
+	}
+}
+
 func TestLoadRejectsInvalidOrigin(t *testing.T) {
 	t.Parallel()
 

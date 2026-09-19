@@ -1,11 +1,11 @@
 # Configuration reference
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-17 14:22:33 +0300  
-**Version:** 10  
+**Updated:** 2026-09-19 20:06:19 +0300  
+**Version:** 11  
 **Document type:** reference
 
-The server reads a single YAML file (see `config.example.yaml`). Every runtime path, bind address, and timeout comes from this file; nothing is hard-coded in the binary.
+The server reads a single YAML file (see `config.example.yaml`). After start, every runtime path, bind address, and timeout comes from that file; there is no environment-variable configuration. When the file named by `-config` is missing, exactly one of `-jwks-url` or `-shared-secret` writes it from embedded defaults and that one flag, then `Load` runs as usual. An existing file is never overwritten: first-run flags are not a rewrite API.
 
 ## server
 
@@ -50,7 +50,7 @@ The operations panel shows both `origin` from this file (not redacted) and the c
 
 | Field | Type | Default | Purpose |
 |---|---|---|---|
-| `jwks_url` | string | Supabase JWKS URL placeholder | URL of the JSON Web Key Set used to verify bearer tokens. |
+| `jwks_url` | string | Supabase JWKS URL placeholder (see below) | URL of the JSON Web Key Set used to verify bearer tokens. |
 | `jwks_file` | string | empty | Path to a static JWKS file. When non-empty, the server reads this file and does not fetch `jwks_url`. |
 | `jwks_cache_ttl` | duration | `10m` | How long a successfully loaded key set stays cached before the next refresh. |
 | `allowed_algs` | string list | `ES256`, `RS256` | Algorithms the parser will accept. Anything else, including `none` and `HS256`, is rejected unless listed here. |
@@ -58,7 +58,9 @@ The operations panel shows both `origin` from this file (not redacted) and the c
 | `issuer` | string | empty | JWT `iss` value to require. Empty means issuer is not checked. |
 | `dev_hs256_secret` | string | empty | Development-only HMAC secret. Empty in every non-dev deployment. |
 
-The server never issues tokens. It fetches **public** keys (or reads them from `jwks_file`) and extracts `sub` as `user_id`.
+The server never issues tokens. It fetches **public** keys (or reads them from `jwks_file`) and extracts `sub` as `user_id`. A private PEM is not a configuration field and is not accepted on the command line: this process verifies tokens, it does not mint them.
+
+`applyDefaults` fills an empty `jwks_url` with the Supabase placeholder **only when** both `dev_hs256_secret` and `jwks_file` are empty. A secret-only or file-only document must not inherit a foreign JWKS URL, or the process would fetch someone else's keys. Existing YAML that has neither secret nor file still receives the placeholder, as before.
 
 Supabase's edge caches the JWKS response for 10 minutes. A newly published signing key may therefore be invisible to this process for up to that long even if `jwks_cache_ttl` is shorter; values under 10 minutes do not make a new Supabase key appear sooner. See [JSON Web Tokens](https://supabase.com/docs/guides/auth/jwts) and [signing keys](https://supabase.com/docs/guides/auth/signing-keys).
 
@@ -70,7 +72,20 @@ An empty `audience` list means "do not check `aud`". The same for an empty `issu
 
 HS256 is a symmetric algorithm: the key that verifies a token is the same key that can **issue** one. A process that holds this secret can mint a bearer token for any `sub`, including users of someone else's project. Supabase calls HS256 "not recommended for production" and "strongly discourage[s]" verifying tokens with the legacy JWT secret; new projects sign asymmetrically by default as of 1 October 2025 ([JWT signing keys](https://supabase.com/blog/jwt-signing-keys)).
 
-When this field is non-empty the process logs a warning at startup. The secret itself is never logged. `HS256` is not in the default `allowed_algs`; the operator must list it explicitly for the secret to have any effect.
+When this field is non-empty the process logs a warning at startup. The secret itself is never logged. `HS256` is not in the default `allowed_algs`; the operator must list it explicitly for the secret to have any effect. First-run `-shared-secret` writes the operator's string and adds `HS256` to `allowed_algs`. The process never invents `local-dev-only`.
+
+## First-run flags
+
+These flags apply only when the `-config` path does not exist. `-version` and `-healthcheck` neither read nor seed the file.
+
+| Flag | Role |
+|---|---|
+| `-jwks-url` | Seed `auth.jwks_url` from the operator's IdP. `dev_hs256_secret` stays empty. The URL in the file equals the flag, not the Supabase placeholder. |
+| `-shared-secret` | Seed `auth.dev_hs256_secret` from the operator's string (personal cloud, not "turn auth off"). After `Load`, `jwks_url` is empty. `allowed_algs` contains `HS256`. |
+
+Pass exactly one. Neither flag, or both at once, exits 1 and the message names `-jwks-url` and `-shared-secret`; the file is not created. That is XOR on purpose: merging would pick an authority silently (URL wins, or a leftover secret forges tokens). There is no `-jwks-file` here: a blank host has no JWKS file yet; that path is a later YAML edit.
+
+Any seed writes `admin.bind` `127.0.0.1:8081` with an empty `admin.token` (a seeded Ubuntu process is not the Compose container that binds `0.0.0.0:8081`). `storage.driver` is `sqlite`. `storage.path` is the absolute `{directory of -config}/data/ulsync.db` so a later cwd change does not move the database. `server.bind` stays `0.0.0.0:8080`. `origin` is not seeded. The write is atomic (temporary file in the same directory, then `Rename`) with mode `0600`.
 
 ## sync
 

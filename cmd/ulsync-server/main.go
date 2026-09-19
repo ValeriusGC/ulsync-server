@@ -1,7 +1,9 @@
 // Command ulsync-server is the HTTP sync server for the ulsync protocol.
 //
-// Startup order: load YAML configuration, open the SQLite store (migrations
-// run automatically), construct the token verifier, then listen for HTTP.
+// Startup order: parse flags; if the config file is missing, seed it from
+// exactly one of -jwks-url or -shared-secret; load YAML; open the SQLite
+// store (migrations run automatically); construct the token verifier; listen
+// for HTTP. -version and -healthcheck skip config entirely and never seed.
 // Shutdown on SIGINT/SIGTERM drains in-flight HTTP requests before closing
 // the database pools.
 //
@@ -16,6 +18,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -41,17 +44,34 @@ func main() {
 // run is the real entry point so main can exit with a status code without
 // calling os.Exit from deferred cleanup paths.
 func run() int {
-	configPath := flag.String("config", "./config.yaml", "path to the YAML configuration file")
-	showVersion := flag.Bool("version", false, "print version and exit")
-	doHealthcheck := flag.Bool("healthcheck", false, "GET http://127.0.0.1:8080/health and exit 0 only on HTTP 200")
-	flag.Parse()
+	return runMain(os.Args[1:], os.Stdout, os.Stderr)
+}
+
+// runMain is run with injectable args and streams so tests can assert exit
+// codes without occupying flag.CommandLine or the process's real stderr.
+func runMain(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("ulsync-server", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "./config.yaml", "path to the YAML configuration file")
+	showVersion := fs.Bool("version", false, "print version and exit")
+	doHealthcheck := fs.Bool("healthcheck", false, "GET http://127.0.0.1:8080/health and exit 0 only on HTTP 200")
+	jwksURL := fs.String("jwks-url", "", "HTTPS JWKS URL used to seed a missing config file")
+	sharedSecret := fs.String("shared-secret", "", "HS256 shared secret used to seed a missing config file")
+	if err := fs.Parse(args); err != nil {
+		return 1
+	}
 
 	if *showVersion {
-		fmt.Println(version)
+		fmt.Fprintln(stdout, version)
 		return 0
 	}
 	if *doHealthcheck {
 		return probeHealth(healthClient(), healthcheckURL)
+	}
+
+	if err := ensureConfig(*configPath, *jwksURL, *sharedSecret); err != nil {
+		fmt.Fprintln(stderr, err.Error())
+		return 1
 	}
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
