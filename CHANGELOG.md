@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 20:06:19 +0300  
-**Version:** 13  
+**Updated:** 2026-09-19 20:41:52 +0300  
+**Version:** 14  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -12,6 +12,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+
+- GitHub Actions release workflow on `v*` tags: static linux `amd64` and `arm64` binaries (`CGO_ENABLED=0`) plus `install.sh`, published with `gh release create`. The job fails when `scripts/install.sh` is absent so a tag cannot ship two binaries without the installer.
 
 - First-run seed: when `-config` is missing, exactly one of `-jwks-url` or `-shared-secret` writes the YAML from embedded defaults, then the process starts. An existing file is never overwritten. URL seed leaves `dev_hs256_secret` empty; secret seed leaves `jwks_url` empty after `Load` and lists `HS256`. The process does not invent `local-dev-only` and does not accept a private PEM.
 - `applyDefaults` no longer fills the Supabase `jwks_url` placeholder when `dev_hs256_secret` or `jwks_file` is set, so a secret-only file does not fetch a foreign host.
