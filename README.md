@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-17 14:22:33 +0300  
-**Version:** 13  
+**Updated:** 2026-09-19 21:01:53 +0300  
+**Version:** 14  
 **Document type:** readme
 
 ## What this is
@@ -11,9 +11,31 @@ Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) p
 
 The wire contract lives in the `protocol/` git submodule (`SPEC.md` and golden fixtures). This repository implements the server side only.
 
-## Install in five minutes
+## Install
 
-You need Docker and Docker Compose V2 on the host. Go is not required for this path.
+One command on Ubuntu. You do not clone this repository, install Go, or write YAML by hand. Pass exactly one of the two flags.
+
+```sh
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
+```
+
+No cloud login, one person on the box:
+
+```sh
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --shared-secret 'pick-a-long-random-string'
+```
+
+The script downloads a static linux binary, writes `$HOME/.ulsync`, starts the process, and prints `http://127.0.0.1:8080/health`. `GET /health` does not need a bearer token. This release has no macOS binary, does not install systemd, and does not publish the Dart package.
+
+**Already have login.** You do not put a signing key on the store. Paste the public JWKS URL. When the provider rotates keys, do nothing here; the process refetches. To point at a different URL: edit `auth.jwks_url`, restart. `install.sh` will not overwrite the file.
+
+**Keys as a file.** Put public keys in a JWKS file, set `auth.jwks_file`. Never copy the private key. To rotate: replace the file; wait up to `jwks_cache_ttl` (default 10 minutes) or restart. Not a one-liner: the file must exist first.
+
+**No cloud login, one person.** One string in the store and in the app (`--shared-secret`). This still verifies every bearer token; knowing the string is what lets a client mint one. To rotate: change the string in both places, restart; old tokens die.
+
+## If you already have Docker
+
+Compose is a second path for hosts that already run Docker Compose V2. It is not the one-line install above. Go is not required for this path.
 
 Create `config.yaml` in the repository root (the file is gitignored):
 
@@ -116,13 +138,13 @@ Replace `<project>` with your project reference from the Supabase dashboard (Set
 
 ## Hands-on check
 
-The five-minute install above does not need Go or signed JWTs. The commands below exercise push, pull, and live delivery end-to-end. They require:
+Mail (push, pull, live) still needs a signed JWT. Use the Docker path in [If you already have Docker](#if-you-already-have-docker) and add HS256 below, or install with `--shared-secret` and mint tokens with that same string. Token verification stays on. They require:
 
 - this repository cloned with `git submodule update --init --recursive` (for `protocol/fixtures/`);
 - Go 1.26+ on the host (to mint a development token);
-- the same `config.yaml` as in [Install in five minutes](#install-in-five-minutes), **plus** HS256 for local signing.
+- a running server: Compose from that section, **or** `install.sh --shared-secret` with the same string you mint with.
 
-Add to the `auth:` block in `config.yaml`:
+For the Compose file, add to the `auth:` block in `config.yaml`:
 
 ```yaml
   allowed_algs: ["ES256", "RS256", "HS256"]
@@ -250,7 +272,7 @@ On the host machine with Docker Compose:
 curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8081/admin
 ```
 
-Expected: HTTP `401` with body `{"error":"unauthorized"}` when `admin.token` is set (as in the five-minute YAML). With the panel password:
+Expected: HTTP `401` with body `{"error":"unauthorized"}` when `admin.token` is set (as in the Docker example YAML). With the panel password:
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' -H 'Authorization: Bearer change-me' http://127.0.0.1:8081/admin
