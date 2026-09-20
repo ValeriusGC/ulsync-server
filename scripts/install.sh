@@ -25,8 +25,12 @@
 # accept a private PEM; there is no --jwks-file here because a blank
 # host has no JWKS file yet.
 #
-# Why --prefix and --listen: one VPS holds several stores. Each store
-# is a directory and a pair of ports. --listen is mail (/health, /v1/*);
+# Why --prefix and --listen: one VPS holds several stores. $HOME/.ulsync
+# is the parent of stores, never a store: files there would nest the
+# next app inside the first. A name without a slash (--prefix notes)
+# is $HOME/.ulsync/notes. A path with a slash is used as-is. Omit
+# --prefix and the store is $HOME/.ulsync/default. Each store is a
+# directory and a pair of ports. --listen is mail (/health, /v1/*);
 # --admin-listen is the panel (keep loopback). A live /health on 8080
 # is not success for a different prefix: GET /health must report
 # storage.path under this prefix, and wait_health requires this pid
@@ -60,7 +64,7 @@ usage() {
 	echo "install.sh: pass exactly one of --jwks-url or --shared-secret" >&2
 	echo "  --jwks-url URL         seed a missing config from a public JWKS URL" >&2
 	echo "  --shared-secret STR    seed a missing config from one HMAC string" >&2
-	echo "  --prefix DIR           default \$HOME/.ulsync" >&2
+	echo "  --prefix NAME|DIR      name under \$HOME/.ulsync, or a path; default \$HOME/.ulsync/default" >&2
 	echo "  --listen HOST:PORT     first-run server.bind; default 0.0.0.0:8080" >&2
 	echo "  --admin-listen HOST:PORT  first-run admin.bind; default 127.0.0.1:8081" >&2
 	echo "  --bin PATH             use this binary; skip GitHub download" >&2
@@ -118,8 +122,16 @@ if [ -n "$JWKS_URL" ] && [ -n "$SHARED_SECRET" ]; then
 	die "pass exactly one of --jwks-url or --shared-secret, not both"
 fi
 
+# A bare name is a store under $HOME/.ulsync. The parent itself is
+# never a store: a second --prefix would otherwise land inside the first.
 if [ -z "$PREFIX" ]; then
-	PREFIX="${HOME:?HOME is not set}/.ulsync"
+	PREFIX="${HOME:?HOME is not set}/.ulsync/default"
+else
+	case "$PREFIX" in
+	.|..) die "--prefix cannot be . or .." ;;
+	/*|*/*) ;;
+	*) PREFIX="${HOME:?HOME is not set}/.ulsync/$PREFIX" ;;
+	esac
 fi
 
 command -v curl >/dev/null 2>&1 || die "curl is required to wait for /health (and to download without --bin)"
