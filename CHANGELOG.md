@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-20 13:29:39 +0300  
-**Version:** 17  
+**Updated:** 2026-09-20 16:03:57 +0300  
+**Version:** 19  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -35,6 +35,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Operations panel shows configured `origin` and the live value from `server_meta` (read-only).
 - `POST /v1/sync/diff`: read-only divergence check returning `missing` and `stale` lists by the three conflict ranks of SPEC §2 (protocol submodule bumped to the step-18 contract).
 - `store.Wins` expresses the same last-write-wins rule as `upsertEnvelopeSQL`; a table-driven test pins the two implementations together without changing the write path.
+
+## [0.1.1] - 2026-09-20
+
+### Changed
+
+- `install.sh --prefix notes` is `$HOME/.ulsync/notes`. `$HOME/.ulsync` is the parent of stores, never a store. Omit `--prefix` and the store is `$HOME/.ulsync/default`. README one-liners name the store so a second app is the same command with another name and `--listen`.
 
 ## [0.1.0] - 2026-08-31
 

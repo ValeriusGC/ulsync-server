@@ -40,6 +40,14 @@ type adminEnv struct {
 
 func newAdminEnv(t *testing.T, tweak func(*config.Config)) *adminEnv {
 	t.Helper()
+	return newAdminEnvOpts(t, tweak, Options{
+		SnapshotEvery: 100 * time.Millisecond,
+		StatsEvery:    50 * time.Millisecond,
+	})
+}
+
+func newAdminEnvOpts(t *testing.T, tweak func(*config.Config), opts Options) *adminEnv {
+	t.Helper()
 
 	ecPriv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
@@ -106,10 +114,7 @@ func newAdminEnv(t *testing.T, tweak func(*config.Config)) *adminEnv {
 
 	startedAt := time.Now().UTC().Add(-time.Minute)
 	syncSrv := httpapi.New(cfg, db, verifier, "test-version", startedAt)
-	adminSrv := New(cfg, db, verifier, "test-version", startedAt, syncSrv.Metrics(), syncSrv.Registry(), Options{
-		SnapshotEvery: 100 * time.Millisecond,
-		StatsEvery:    50 * time.Millisecond,
-	})
+	adminSrv := New(cfg, db, verifier, "test-version", startedAt, syncSrv.Metrics(), syncSrv.Registry(), opts)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -442,7 +447,14 @@ func TestSnapshotLiveConnectionsMatchesRegistry(t *testing.T) {
 func TestStatsCachedAcrossImmediateSnapshots(t *testing.T) {
 	t.Parallel()
 
-	env := newAdminEnv(t, nil)
+	// Production ticker is 1s / 5s. The shared test env ticks every 100ms and
+	// refreshes Stats every 50ms; under -race that tick lands between Upsert
+	// and the "immediate" snapshot, so the cache looks broken. This test owns
+	// the intervals: ticker must not fire, TTL is long enough to cover Upsert.
+	env := newAdminEnvOpts(t, nil, Options{
+		SnapshotEvery: time.Hour,
+		StatsEvery:    200 * time.Millisecond,
+	})
 	ctx := context.Background()
 	first := env.adminSrv.assembleSnapshot(ctx)
 	before := first.Storage.Envelopes
@@ -467,7 +479,7 @@ func TestStatsCachedAcrossImmediateSnapshots(t *testing.T) {
 		t.Fatalf("immediate second snapshot envelopes = %d, want cached %d", second.Storage.Envelopes, before)
 	}
 
-	time.Sleep(60 * time.Millisecond)
+	time.Sleep(250 * time.Millisecond)
 	third := env.adminSrv.assembleSnapshot(ctx)
 	if third.Storage.Envelopes <= before {
 		t.Fatalf("envelopes after cache TTL = %d, want > %d", third.Storage.Envelopes, before)

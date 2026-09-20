@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 21:31:31 +0300  
-**Version:** 15  
+**Updated:** 2026-09-20 15:59:59 +0300  
+**Version:** 16  
 **Document type:** readme
 
 ## What this is
@@ -13,19 +13,19 @@ The wire contract lives in the `protocol/` git submodule (`SPEC.md` and golden f
 
 ## Install
 
-One command on Ubuntu. You do not clone this repository, install Go, or write YAML by hand. Pass exactly one of the two flags.
+One command on Ubuntu. You do not clone this repository, install Go, or write YAML by hand. Name the store, then pass exactly one of the two auth flags. Replace `<project>` with your Supabase ref.
 
 ```sh
-curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
 ```
 
 No cloud login, one person on the box:
 
 ```sh
-curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --shared-secret 'pick-a-long-random-string'
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --shared-secret 'pick-a-long-random-string'
 ```
 
-The script downloads a static linux binary, writes `$HOME/.ulsync`, starts the process, and prints `http://127.0.0.1:8080/health`. `GET /health` does not need a bearer token. This release has no macOS binary, does not install systemd, and does not publish the Dart package.
+`--prefix notes` is `$HOME/.ulsync/notes` (binary, YAML, SQLite). The script starts the process and prints `http://127.0.0.1:8080/health`. `GET /health` does not need a bearer token. This release has no macOS binary, does not install systemd, and does not publish the Dart package.
 
 **Already have login.** You do not put a signing key on the store. Paste the public JWKS URL. When the provider rotates keys, do nothing here; the process refetches. To point at a different URL: edit `auth.jwks_url`, restart. `install.sh` will not overwrite the file.
 
@@ -35,14 +35,14 @@ The script downloads a static linux binary, writes `$HOME/.ulsync`, starts the p
 
 ## Several stores on one host
 
-One VPS holds several apps. Each store is a directory and a pair of ports. `--listen` is mail (`/health` and `/v1/*`); `--admin-listen` is the panel and stays on loopback. A live `/health` on 8080 is not success for a different prefix.
+Same one-liner, other name, other ports. Do not stop the first process. `$HOME/.ulsync` is the parent; each app is a sibling directory. `--listen` is mail (`/health` and `/v1/*`); `--admin-listen` is the panel and stays on loopback. A live `/health` on 8080 is not success for a different prefix.
 
 ```sh
-curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix "$HOME/.ulsync/notes" --listen 0.0.0.0:8080 --admin-listen 127.0.0.1:8081 --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
-curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix "$HOME/.ulsync/ledger" --listen 0.0.0.0:8180 --admin-listen 127.0.0.1:8181 --shared-secret 'pick-a-long-random-string'
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix ledger --listen 0.0.0.0:8180 --admin-listen 127.0.0.1:8181 --shared-secret 'pick-a-long-random-string'
 ```
 
-Do not stop the first process before the second command. Changing a port later is a YAML edit and a restart; repeating `install.sh` does not rewrite bind. Without these flags the first store still uses `0.0.0.0:8080` and `127.0.0.1:8081`.
+A name without a slash is `$HOME/.ulsync/<name>`. A path with a slash is used as-is. Changing a port later is a YAML edit and a restart; repeating `install.sh` does not rewrite bind. Without `--listen` the first store uses `0.0.0.0:8080` and `127.0.0.1:8081`.
 
 ## If you already have Docker
 
