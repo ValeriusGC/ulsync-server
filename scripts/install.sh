@@ -14,6 +14,9 @@
 # Why YAML is sacred: after the first start the file on disk is the
 # operator's. Repeating the one-liner (or passing a flag again) must
 # not rewrite it, invent a secret, or move admin.bind off loopback.
+# If this prefix already answers /health, the script must not replace
+# the running file: Linux returns ETXTBSY ("Text file busy") on that
+# write, and the operator's process is already the product.
 #
 # Why the two flags are XOR: merging would pick an authority silently.
 # Neither flag on a missing config.yaml is not a "read config" stack;
@@ -25,7 +28,10 @@
 # Why --prefix and --listen: one VPS holds several stores. Each store
 # is a directory and a pair of ports. --listen is mail (/health, /v1/*);
 # --admin-listen is the panel (keep loopback). A live /health on 8080
-# is not success for a different prefix.
+# is not success for a different prefix: GET /health must report
+# storage.path under this prefix, and wait_health requires this pid
+# still alive. Otherwise a neighbor on 8080 would make a colliding
+# install look successful.
 #
 # Why --bin: Machine (and a host without GitHub Releases) already has
 # a binary. Without --bin this script downloads
@@ -119,6 +125,7 @@ fi
 command -v curl >/dev/null 2>&1 || die "curl is required to wait for /health (and to download without --bin)"
 
 mkdir -p "$PREFIX" || die "cannot create $PREFIX"
+PREFIX=$(CDPATH= cd -P -- "$PREFIX" && pwd) || die "cannot resolve prefix to an absolute path"
 
 BIN_DEST="$PREFIX/ulsync-server"
 CONFIG="$PREFIX/config.yaml"
@@ -192,34 +199,31 @@ resolve_health_url() {
 	health_url_from_bind "$_bind"
 }
 
-place_binary
-
-# Missing YAML and no seed flag: fail here so the operator sees the two
-# flag names, not a wrapped "read config" from the binary. Do not create
-# config.yaml on this path.
-if [ ! -f "$CONFIG" ] && [ -z "$JWKS_URL" ] && [ -z "$SHARED_SECRET" ]; then
-	die "config.yaml is missing under $PREFIX; pass exactly one of --jwks-url or --shared-secret"
-fi
-
-HEALTH_URL=$(resolve_health_url)
-
 health_ok() {
-	curl -fsS -o /dev/null --connect-timeout 1 "$HEALTH_URL" 2>/dev/null
+	# A 200 from some process on this URL is not enough: a neighbor may
+	# already own the default port. storage.path must live under PREFIX.
+	_body=$(curl -fsS --connect-timeout 1 "$HEALTH_URL" 2>/dev/null) || return 1
+	_path=$(printf '%s' "$_body" | sed -n 's/.*"path":"\([^"]*\)".*/\1/p')
+	[ -n "$_path" ] || return 1
+	case "$_path" in
+	"$PREFIX"|"$PREFIX"/*) return 0 ;;
+	esac
+	return 1
 }
 
 wait_health() {
 	_pid=$1
 	_n=0
 	while [ "$_n" -lt "$HEALTH_WAIT_SECS" ]; do
-		if health_ok; then
-			return 0
-		fi
 		if ! kill -0 "$_pid" 2>/dev/null; then
 			echo "install.sh: ulsync-server (pid $_pid) exited before /health answered" >&2
 			if [ -f "$LOG" ]; then
 				cat "$LOG" >&2
 			fi
 			return 1
+		fi
+		if health_ok; then
+			return 0
 		fi
 		_n=$((_n + 1))
 		sleep 1
@@ -228,7 +232,10 @@ wait_health() {
 	return 1
 }
 
+HEALTH_URL=$(resolve_health_url)
+
 # A listener already serving THIS prefix's bind means the store is up.
+# Do not copy or download onto the running file (Linux ETXTBSY).
 # A foreign process on 8080 is not success for a different prefix or port.
 if [ -f "$CONFIG" ] && health_ok; then
 	echo "$HEALTH_URL"
@@ -243,6 +250,15 @@ if [ -f "$PIDFILE" ]; then
 		exit 0
 	fi
 fi
+
+# Missing YAML and no seed flag: fail here so the operator sees the two
+# flag names, not a wrapped "read config" from the binary. Do not create
+# config.yaml on this path. Do not replace a binary first.
+if [ ! -f "$CONFIG" ] && [ -z "$JWKS_URL" ] && [ -z "$SHARED_SECRET" ]; then
+	die "config.yaml is missing under $PREFIX; pass exactly one of --jwks-url or --shared-secret"
+fi
+
+place_binary
 
 # Existing YAML: start from disk and do not pass seed flags, even if
 # the one-liner still has --jwks-url / --shared-secret / --listen.

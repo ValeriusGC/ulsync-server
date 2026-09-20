@@ -1,16 +1,16 @@
 # Load model and measured capacity
 
 **Created:** 2026-08-28 18:50:00 +0500  
-**Updated:** 2026-08-28 19:42:00 +0500  
-**Version:** 2  
+**Updated:** 2026-09-20 15:20:11 +0300  
+**Version:** 3  
 **Document type:** reference
 
 ## How to reproduce
 
-All commands from the repository root `/Users/vvk/AndroidStudioProjects/r/ulsync-server`.
+All commands from the repository root after `git clone` (directory `ulsync-server`).
 
 ```bash
-cd /Users/vvk/AndroidStudioProjects/r/ulsync-server
+cd ulsync-server
 git checkout round-1/16-08-load
 go build -o ulsync-server ./cmd/ulsync-server
 

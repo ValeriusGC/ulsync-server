@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-19 21:31:31 +0300  
-**Version:** 16  
+**Updated:** 2026-09-20 13:29:39 +0300  
+**Version:** 17  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
+
+### Fixed
+
+- `install.sh` no longer copies or downloads onto a running `$PREFIX/ulsync-server`. A second one-liner against a live `/health` for that prefix exits 0. Linux otherwise returns ETXTBSY (`Text file busy`) and the Hands repeat-install gate fails.
+- `install.sh` treats `GET /health` as this prefix only when `storage.path` sits under `$PREFIX`, and `wait_health` requires the started pid to still be alive. A neighbor on 8080 no longer makes a colliding install exit 0.
 
 ### Added
 
