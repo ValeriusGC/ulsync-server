@@ -31,7 +31,7 @@ What a root install prints (stderr, then stdout):
 
 ```
 install.sh: store /root/.ulsync/notes
-install.sh: mail will be 0.0.0.0:8080  (default; pass --listen HOST:PORT to choose)
+install.sh: sync port will be 0.0.0.0:8080  (default; pass --listen HOST:PORT to choose)
 install.sh: panel will be 127.0.0.1:8081  (default; this computer only; pass --admin-listen HOST:PORT to choose)
 install.sh: systemd will enable ulsync-notes.service  (survives reboot)
 install.sh: systemd: creating ulsync-notes.service
@@ -40,7 +40,7 @@ install.sh: systemd: starting ulsync-notes.service
 install.sh: wrote /usr/local/bin/ulsync-notes-uninstall  (--purge deletes files)
 install.sh: installed
 install.sh:   store     /root/.ulsync/notes
-install.sh:   mail      0.0.0.0:8080   http://127.0.0.1:8080/health
+install.sh:   sync port 0.0.0.0:8080   http://127.0.0.1:8080/health
 install.sh:   panel     127.0.0.1:8081   http://127.0.0.1:8081/  (ssh -L 8081:127.0.0.1:8081)
 install.sh:   phones    http://YOUR-VPS-IP:8080/health
 install.sh:   reboot    ulsync-notes.service stays up  (systemctl status ulsync-notes)
@@ -56,7 +56,7 @@ http://127.0.0.1:8080/health
 
 ## Several stores on one host
 
-Same one-liner, other name, other ports. Do not stop the first process. `$HOME/.ulsync` is the parent; each app is a sibling directory. `--listen` is mail (`/health` and `/v1/*`); `--admin-listen` is the panel and stays on loopback. A live `/health` on 8080 is not success for a different prefix.
+Same one-liner, other name, other ports. Do not stop the first process. `$HOME/.ulsync` is the parent; each app is a sibling directory. `--listen` is the sync port (`/health` and `/v1/*`); `--admin-listen` is the panel and stays on loopback. A live `/health` on 8080 is not success for a different prefix.
 
 ```sh
 curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'

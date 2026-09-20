@@ -19,6 +19,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `install.sh` name checks use POSIX `[!…]`. Dash treated `[^…]` as a match for `notes`/`ledger`, so root+systemd skipped the unit.
+- `install.sh` result card and errors say `sync port`, not `mail`.
 - `install.sh` no longer copies or downloads onto a running `$PREFIX/ulsync-server`. A second one-liner against a live `/health` for that prefix exits 0. Linux otherwise returns ETXTBSY (`Text file busy`) and the Hands repeat-install gate fails.
 - `install.sh` treats `GET /health` as this prefix only when `storage.path` sits under `$PREFIX`, and `wait_health` requires the started pid to still be alive. A neighbor on 8080 no longer makes a colliding install exit 0.
 - A busy mail bind is named before spawn when another HTTP already answers, or after a failed start if the log says `address already in use`. The message tells the operator to pass `--listen HOST:PORT`.
