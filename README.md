@@ -1,8 +1,8 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-20 15:59:59 +0300  
-**Version:** 16  
+**Updated:** 2026-09-20 18:00:03 +0300  
+**Version:** 19  
 **Document type:** readme
 
 ## What this is
@@ -25,7 +25,28 @@ No cloud login, one person on the box:
 curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --shared-secret 'pick-a-long-random-string'
 ```
 
-`--prefix notes` is `$HOME/.ulsync/notes` (binary, YAML, SQLite). The script starts the process and prints `http://127.0.0.1:8080/health`. `GET /health` does not need a bearer token. This release has no macOS binary, does not install systemd, and does not publish the Dart package.
+`--prefix notes` is `$HOME/.ulsync/notes` (binary, YAML, SQLite). The script starts the process. Last line of stdout is `http://127.0.0.1:8080/health`. Stderr is the result card. As **root** on Ubuntu with systemd, the same command enables `ulsync-notes.service` and writes `ulsync-notes-uninstall`. Without root the process is a background job and dies on reboot. `curl | sh` cannot ask questions (stdin is the script); omitted `--listen` still prints `0.0.0.0:8080` / `127.0.0.1:8081`. `GET /health` does not need a bearer token. This release has no macOS binary and does not publish the Dart package.
+
+What a root install prints (stderr, then stdout):
+
+```
+install.sh: store /root/.ulsync/notes
+install.sh: mail will be 0.0.0.0:8080  (default; pass --listen HOST:PORT to choose)
+install.sh: panel will be 127.0.0.1:8081  (default; this computer only; pass --admin-listen HOST:PORT to choose)
+install.sh: systemd will enable ulsync-notes.service  (survives reboot)
+install.sh: systemd: creating ulsync-notes.service
+install.sh: systemd: enabling ulsync-notes.service
+install.sh: systemd: starting ulsync-notes.service
+install.sh: wrote /usr/local/bin/ulsync-notes-uninstall  (--purge deletes files)
+install.sh: installed
+install.sh:   store     /root/.ulsync/notes
+install.sh:   mail      0.0.0.0:8080   http://127.0.0.1:8080/health
+install.sh:   panel     127.0.0.1:8081   http://127.0.0.1:8081/  (ssh -L 8081:127.0.0.1:8081)
+install.sh:   phones    http://YOUR-VPS-IP:8080/health
+install.sh:   reboot    ulsync-notes.service stays up  (systemctl status ulsync-notes)
+install.sh:   stop      /usr/local/bin/ulsync-notes-uninstall
+http://127.0.0.1:8080/health
+```
 
 **Already have login.** You do not put a signing key on the store. Paste the public JWKS URL. When the provider rotates keys, do nothing here; the process refetches. To point at a different URL: edit `auth.jwks_url`, restart. `install.sh` will not overwrite the file.
 
@@ -43,6 +64,24 @@ curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/
 ```
 
 A name without a slash is `$HOME/.ulsync/<name>`. A path with a slash is used as-is. Changing a port later is a YAML edit and a restart; repeating `install.sh` does not rewrite bind. Without `--listen` the first store uses `0.0.0.0:8080` and `127.0.0.1:8081`.
+
+## Uninstall
+
+Same script, or the helper it left on disk (`ulsync-notes-uninstall`: `/usr/local/bin` as root, otherwise `$HOME/.ulsync/`). Stops the unit (if root installed one) and the background job. Files stay unless you pass `--purge`.
+
+```sh
+ulsync-notes-uninstall
+ulsync-notes-uninstall --purge
+```
+
+GitHub, if the helper is gone:
+
+```sh
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --uninstall --prefix notes
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --uninstall --prefix notes --purge
+```
+
+`--purge` deletes `$HOME/.ulsync/notes` (the database too). Other names on the same host are other `--prefix` values; they are not touched.
 
 ## If you already have Docker
 
