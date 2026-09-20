@@ -74,7 +74,7 @@ usage() {
 	echo "  --jwks-url URL         seed a missing config from a public JWKS URL" >&2
 	echo "  --shared-secret STR    seed a missing config from one HMAC string" >&2
 	echo "  --prefix NAME|DIR      name under \$HOME/.ulsync, or a path; default \$HOME/.ulsync/default" >&2
-	echo "  --listen HOST:PORT     first-run mail bind; omit → 0.0.0.0:8080 (phones, /health, /v1)" >&2
+	echo "  --listen HOST:PORT     first-run sync port bind; omit → 0.0.0.0:8080 (phones, /health, /v1)" >&2
 	echo "  --admin-listen HOST:PORT  first-run panel bind; omit → 127.0.0.1:8081 (this machine only)" >&2
 	echo "  --bin PATH             use this binary; skip GitHub download" >&2
 	echo "  --uninstall            stop this prefix (systemd unit and pid file); keep files" >&2
@@ -271,7 +271,7 @@ wait_health() {
 			echo "install.sh: ulsync-server (pid $_pid) exited before /health answered" >&2
 			_mail=$(resolve_bind server "$LISTEN" "$DEFAULT_MAIL")
 			if [ -f "$LOG" ] && grep -qi 'address already in use' "$LOG"; then
-				echo "install.sh: mail ${_mail} is already taken; pass --listen HOST:PORT" >&2
+				echo "install.sh: sync port ${_mail} is already taken; pass --listen HOST:PORT" >&2
 			fi
 			if [ -f "$LOG" ]; then
 				cat "$LOG" >&2
@@ -329,7 +329,7 @@ uninstall_path() {
 	}
 	_base=$(unit_basename)
 	case "$_base" in
-	''|.|..|*[^A-Za-z0-9_-]*)
+	''|.|..|*[!A-Za-z0-9_-]*)
 		printf ''
 		return 0
 		;;
@@ -410,13 +410,13 @@ announce_plan() {
 	_panel=$(resolve_bind admin "$ADMIN_LISTEN" "$DEFAULT_PANEL")
 	echo "install.sh: store $PREFIX" >&2
 	if [ -f "$CONFIG" ]; then
-		echo "install.sh: mail is ${_mail}  (from config.yaml; --listen does not rewrite it)" >&2
+		echo "install.sh: sync port is ${_mail}  (from config.yaml; --listen does not rewrite it)" >&2
 		echo "install.sh: panel is ${_panel}  (from config.yaml; --admin-listen does not rewrite it)" >&2
 	else
 		if [ -n "$LISTEN" ]; then
-			echo "install.sh: mail will be ${_mail}" >&2
+			echo "install.sh: sync port will be ${_mail}" >&2
 		else
-			echo "install.sh: mail will be ${_mail}  (default; pass --listen HOST:PORT to choose)" >&2
+			echo "install.sh: sync port will be ${_mail}  (default; pass --listen HOST:PORT to choose)" >&2
 		fi
 		if [ -n "$ADMIN_LISTEN" ]; then
 			echo "install.sh: panel will be ${_panel}  (this computer only)" >&2
@@ -443,7 +443,7 @@ announce_result() {
 	_help=$(uninstall_path)
 	echo "install.sh: installed" >&2
 	echo "install.sh:   store     $PREFIX" >&2
-	echo "install.sh:   mail      ${_mail}   $HEALTH_URL" >&2
+	echo "install.sh:   sync port ${_mail}   $HEALTH_URL" >&2
 	echo "install.sh:   panel     ${_panel}   http://127.0.0.1:${_panel_port}/  (ssh -L ${_panel_port}:127.0.0.1:${_panel_port})" >&2
 	case "$_mail" in
 	0.0.0.0:*|::*)
@@ -451,7 +451,7 @@ announce_result() {
 		echo "install.sh:   firewall  open TCP ${_mail_port} at the hoster; do not publish TCP ${_panel_port}" >&2
 		;;
 	*)
-		echo "install.sh:   phones    not from the internet (mail is ${_mail})" >&2
+		echo "install.sh:   phones    not from the internet (sync port is ${_mail})" >&2
 		;;
 	esac
 	if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet "$_u" 2>/dev/null; then
@@ -480,7 +480,7 @@ preflight_mail() {
 	_mail=$(resolve_bind server "$LISTEN" "$DEFAULT_MAIL")
 	_url=$(health_url_from_bind "$_mail")
 	if curl -fsS --connect-timeout 1 "$_url" >/dev/null 2>&1; then
-		die "mail ${_mail} already answers (not this store); pass --listen HOST:PORT"
+		die "sync port ${_mail} already answers (not this store); pass --listen HOST:PORT"
 	fi
 }
 
@@ -509,7 +509,7 @@ can_systemd() {
 	esac
 	_base=$(unit_basename)
 	case "$_base" in
-	''|.|..|*[^A-Za-z0-9_-]*) return 1 ;;
+	''|.|..|*[!A-Za-z0-9_-]*) return 1 ;;
 	esac
 	return 0
 }
@@ -586,7 +586,7 @@ drop_unit() {
 	command -v systemctl >/dev/null 2>&1 || return 0
 	_base=$(unit_basename)
 	case "$_base" in
-	''|.|..|*[^A-Za-z0-9_-]*) return 0 ;;
+	''|.|..|*[!A-Za-z0-9_-]*) return 0 ;;
 	esac
 	_unit=$(unit_name)
 	_unitfile="/etc/systemd/system/${_unit}.service"
