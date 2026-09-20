@@ -348,7 +348,7 @@ SQLite runs in WAL mode. Besides the main file, expect companion files alongside
 Do not copy only the `.db` file while the server is running. The image has no `sqlite3` CLI; stop the container and copy the whole data directory:
 
 ```bash
-cd /Users/vvk/AndroidStudioProjects/r/ulsync-server
+cd ulsync-server   # repository root (where compose.yaml lives)
 docker compose stop
 mkdir -p ./backup-ulsync
 docker compose cp ulsync-server:/data/. ./backup-ulsync/

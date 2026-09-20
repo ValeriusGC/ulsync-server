@@ -1,6 +1,8 @@
 /data/
 /ulsync-server
 /config.yaml
+# Local configs for manual H-scenario acceptance (round 1b); not part of the repo.
+/config_h*.yaml
 *.db
 *.db-wal
 *.db-shm
