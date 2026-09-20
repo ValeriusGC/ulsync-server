@@ -1,8 +1,8 @@
 # Changelog
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-20 16:03:57 +0300  
-**Version:** 19  
+**Updated:** 2026-09-20 18:00:03 +0300  
+**Version:** 23  
 **Document type:** changelog
 
 All notable changes to this project are documented in this file.
@@ -11,16 +11,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- As root on systemd, `install.sh` for `$HOME/.ulsync/<name>` writes `ulsync-<name>.service` and `enable --now`. Reboot keeps the store. A repeat one-liner against a pid-file job adopts the unit. No root: background + pid, and the result card says so. `--prefix /tmp/...` does not install a unit.
+- `install.sh --uninstall --prefix NAME` stops that store (unit and pid). `--purge` deletes the directory. Same `curl | sh` as install. A product prefix also gets `ulsync-<name>-uninstall` on disk (`/usr/local/bin` as root, otherwise `$HOME/.ulsync/`), so teardown does not need GitHub.
+- After a successful start `install.sh` prints a plan on stderr before the binary runs (store, mail, panel, whether systemd will enable) and a result card after `/health` (phones URL, firewall, reboot/unit, stop/wipe). Stdout stays the health URL. `curl | sh` cannot prompt; omitted `--listen` still names `0.0.0.0:8080` / `127.0.0.1:8081`. README shows a sample root card.
+
 ### Fixed
 
 - `install.sh` no longer copies or downloads onto a running `$PREFIX/ulsync-server`. A second one-liner against a live `/health` for that prefix exits 0. Linux otherwise returns ETXTBSY (`Text file busy`) and the Hands repeat-install gate fails.
 - `install.sh` treats `GET /health` as this prefix only when `storage.path` sits under `$PREFIX`, and `wait_health` requires the started pid to still be alive. A neighbor on 8080 no longer makes a colliding install exit 0.
+- A busy mail bind is named before spawn when another HTTP already answers, or after a failed start if the log says `address already in use`. The message tells the operator to pass `--listen HOST:PORT`.
 
 ### Added
 
 - One host, several stores: first-run `-listen` / `-admin-listen` (and `install.sh --listen` / `--admin-listen`) write `server.bind` and `admin.bind`. `--prefix` is the directory. A live `/health` on 8080 is not treated as success for a different prefix. Empty flags keep `0.0.0.0:8080` and `127.0.0.1:8081`. Changing a port later is a YAML edit and a restart.
 
-- One-line install: POSIX `scripts/install.sh` downloads the linux static binary for the host arch, seeds `$HOME/.ulsync` with exactly one of `--jwks-url` or `--shared-secret`, and starts the process in the background. A second run does not overwrite YAML. There is no systemd unit, no macOS binary, and the Dart package is not published.
+- One-line install: POSIX `scripts/install.sh` downloads the linux static binary for the host arch, seeds `$HOME/.ulsync` with exactly one of `--jwks-url` or `--shared-secret`, and starts the process. A second run does not overwrite YAML. There is no macOS binary, and the Dart package is not published.
 
 - GitHub Actions release workflow on `v*` tags: static linux `amd64` and `arm64` binaries (`CGO_ENABLED=0`) plus `install.sh`, published with `gh release create`. The job fails when `scripts/install.sh` is absent so a tag cannot ship two binaries without the installer.
 
