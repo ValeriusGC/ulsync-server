@@ -1,15 +1,33 @@
 # ulsync-server
 
 **Created:** 2026-08-26 12:35:42 +0500  
-**Updated:** 2026-09-20 18:00:03 +0300  
-**Version:** 19  
+**Updated:** 2026-09-29 07:45:34 +0300  
+**Version:** 20  
 **Document type:** readme
 
 ## What this is
 
-Go sync server for the [ulsync](https://github.com/ValeriusGC/ulsync-protocol) protocol. Round 1 delivers push, pull, and live feed against a local SQLite store.
+ulsync-server is a program you run on your own machine, on your own VPS. Phones and other devices of one person send it their changes. It keeps them and gives them to that person's other devices. A task list, a note, a done mark: the server does not care which. It does not read the text and does not know what a task is. The application does.
 
-The wire contract lives in the `protocol/` git submodule (`SPEC.md` and golden fixtures). This repository implements the server side only.
+The records stay in a directory on your machine. They are not stored in someone else's cloud, and they are not left with a company whose access rules or prices later decide whether you still have them. Whoever you choose issues the login keys: your login service, or one long string that you and the app both know. The server does not open accounts and does not draw screens. It stores changes, checks the key, and keeps a different application out of this database.
+
+You install it with one command on Ubuntu. You do not clone this repository, install Go or Docker, or write a settings file by hand. The command names the store and gives exactly one way to check keys. The private signing key stays off the server. Run the command as the machine administrator, and the process comes back after a reboot.
+
+While the app is online, a title saved on the phone appears on the tablet by itself, without a Sync button. Several changes in one request are applied together, so an action like "move the finished items to the trash" cannot stop halfway. When devices have been offline for a while, the server can say what is missing or out of date, and the ordinary exchange fetches the rest.
+
+Your own long string, with no outside login. Put the same string in the app:
+
+```sh
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --shared-secret 'pick-a-long-random-string'
+```
+
+Login through the public keys of your authorization service. Replace `<project>` with your Supabase project ref:
+
+```sh
+curl -fsSL https://github.com/ValeriusGC/ulsync-server/releases/latest/download/install.sh | sh -s -- --prefix notes --jwks-url 'https://<project>.supabase.co/auth/v1/.well-known/jwks.json'
+```
+
+Further down: several stores on one machine, the status panel, and a hands-on check. The message format lives in the `protocol/` submodule.
 
 ## Install
 
